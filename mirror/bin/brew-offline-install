@@ -3,6 +3,7 @@
 
 require "json"
 require "net/http"
+require_relative "../lib/safe_shell"
 
 # TODO(ww): Grab this from Homebrew's API instead of hardcoding it.
 CORE_TAP_DIR = "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/"
@@ -13,7 +14,7 @@ CORE_TAP_DIR = "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/"
 # by Homebrew down.
 at_exit do
   Dir.chdir CORE_TAP_DIR do
-    `git checkout master`
+    SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
   end
 end
 
@@ -105,7 +106,7 @@ system "brew", "cleanup", "-s", "--prune=0"
 # tree at. This prevents us from attempting to install either earlier or later
 # versions of packages/resources than we have mirrored.
 Dir.chdir CORE_TAP_DIR do
-  `git checkout #{config[:commit]}`
+  SafeShell.execute('git', 'checkout', config[:commit], timeout: 30)
 end
 
 system "brew", "install", *ARGV
