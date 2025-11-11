@@ -9,10 +9,9 @@ on:
 jobs:
   test-fast:
     name: Fast Tests (Unit + Security)
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest  # Apple Silicon
     strategy:
       matrix:
-        os: [macos-13, macos-14]  # Intel + Apple Silicon
         ruby: ['3.0', '3.1', '3.2']
 
     steps:
@@ -39,10 +38,7 @@ jobs:
 
   test-integration:
     name: Integration Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-13, macos-14]
+    runs-on: macos-latest  # Apple Silicon
 
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +59,7 @@ jobs:
 
   verify-formulae:
     name: Verify Real Formulae Work
-    runs-on: macos-latest
+    runs-on: macos-latest  # Apple Silicon
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -145,7 +141,7 @@ jobs:
 
   verify-casks:
     name: Verify Real Casks Work
-    runs-on: macos-latest
+    runs-on: macos-latest  # Apple Silicon
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -222,7 +218,7 @@ jobs:
 
   code-coverage:
     name: Code Coverage
-    runs-on: macos-latest
+    runs-on: macos-latest  # Apple Silicon
 
     steps:
       - uses: actions/checkout@v4
@@ -244,5 +240,5 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           files: ./mirror/coverage/.resultset.json
-          flags: macos
+          flags: apple-silicon
           name: codecov-offlinebrew
