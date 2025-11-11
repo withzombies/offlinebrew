@@ -52,6 +52,11 @@ jobs:
           echo "Testing dynamic path detection..."
           ruby mirror/test/test_paths.rb
 
+      - name: Run Homebrew API compatibility tests
+        run: |
+          echo "Testing Homebrew API compatibility..."
+          brew ruby mirror/test/test_api_compatibility.rb
+
       - name: Verify brew-mirror can detect paths
         run: |
           echo "Testing brew-mirror path detection..."
