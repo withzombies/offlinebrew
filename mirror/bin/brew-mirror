@@ -7,6 +7,8 @@
 require "optparse"
 require "json"
 require "securerandom"
+require_relative "../lib/homebrew_paths"
+require_relative "../lib/safe_shell"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
@@ -100,9 +102,11 @@ ohai "Writing brew-offline config..."
 config = {}
 
 commit = begin
-  core_dir = File.join HOMEBREW_LIBRARY, "Taps/homebrew/homebrew-core"
+  core_dir = HomebrewPaths.core_tap_path
+  abort "Fatal: homebrew-core tap not found at #{core_dir}" unless Dir.exist?(core_dir)
+
   Dir.chdir core_dir do
-    `git rev-parse HEAD`.chomp
+    SafeShell.execute('git', 'rev-parse', 'HEAD', timeout: 10).chomp
   end
 end
 

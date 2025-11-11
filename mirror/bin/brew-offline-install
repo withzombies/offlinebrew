@@ -4,9 +4,20 @@
 require "json"
 require "net/http"
 require_relative "../lib/safe_shell"
+require_relative "../lib/homebrew_paths"
 
-# TODO(ww): Grab this from Homebrew's API instead of hardcoding it.
-CORE_TAP_DIR = "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/"
+# Dynamically detect homebrew-core tap location
+CORE_TAP_DIR = HomebrewPaths.core_tap_path
+
+# Verify Homebrew is installed before proceeding
+unless HomebrewPaths.homebrew_installed?
+  abort "Fatal: Homebrew is not installed or not in PATH"
+end
+
+# Verify homebrew-core tap exists
+unless Dir.exist?(CORE_TAP_DIR)
+  abort "Fatal: homebrew-core tap not found at #{CORE_TAP_DIR}"
+end
 
 # On exit, return the core tap's `git` state to whatever it was before.
 # It shouldn't actually hurt us to stay at whatever prior revision
