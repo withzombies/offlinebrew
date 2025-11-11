@@ -5,16 +5,15 @@
 
 require "uri"
 require "json"
+require_relative "../lib/offlinebrew_config"
 
 def verbose(msg)
   STDERR.puts "[+] #{msg}" if ENV["HOMEBREW_VERBOSE"]
 end
 
-# `git` is sometimes called from within a fake $HOME, so we can't just
-# expand ~ or $HOME here. Instead, build it manually.
-BREW_OFFLINE_DIR = File.join "/Users", ENV["USER"], ".offlinebrew"
-BREW_OFFLINE_CONFIG = File.join BREW_OFFLINE_DIR, "config.json"
-BREW_OFFLINE_URLMAP = File.join BREW_OFFLINE_DIR, "urlmap.json"
+# Use OfflinebrewConfig to find config files, even when running in a sandbox
+BREW_OFFLINE_CONFIG = OfflinebrewConfig.config_path
+BREW_OFFLINE_URLMAP = OfflinebrewConfig.urlmap_path
 
 # We call the "real" `git` below, which is actually Homebrew's own internal
 # `git` shim that tests this variable.

@@ -5,6 +5,7 @@ require "json"
 require "net/http"
 require_relative "../lib/safe_shell"
 require_relative "../lib/homebrew_paths"
+require_relative "../lib/offlinebrew_config"
 
 # Dynamically detect homebrew-core tap location
 CORE_TAP_DIR = HomebrewPaths.core_tap_path
@@ -32,6 +33,10 @@ end
 # We're doing a lot of fiddling below, so we want Homebrew to be as loud
 # as possible about everything it does.
 ENV["HOMEBREW_VERBOSE"] = "1"
+
+# Set REAL_HOME so that our shim scripts can find the config even when
+# Homebrew runs them with a fake $HOME (which happens during sandbox builds).
+ENV["REAL_HOME"] = Dir.home
 
 # We want to minimize the number of non-package network requests we do,
 # both for performance and stability reasons.
@@ -61,13 +66,14 @@ ENV["HOMEBREW_DEVELOPER"] = "1"
 ENV["HOMEBREW_CURL_PATH"] = "brew-offline-curl"
 ENV["HOMEBREW_GIT_PATH"] = "brew-offline-git"
 
-BREW_OFFLINE_DIR = File.expand_path "~/.offlinebrew"
+# Use OfflinebrewConfig for consistent config location detection
+BREW_OFFLINE_DIR = OfflinebrewConfig.config_dir
 
 # TODO(ww): We should be fetching most of the configuration options from
 # the mirror, and not storing them locally. The only thing we really
 # want (and need) locally is the mirror's address.
-BREW_OFFLINE_LOCAL_CONFIG = File.join BREW_OFFLINE_DIR, "config.json"
-BREW_OFFLINE_LOCAL_URLMAP = File.join BREW_OFFLINE_DIR, "urlmap.json"
+BREW_OFFLINE_LOCAL_CONFIG = OfflinebrewConfig.config_path
+BREW_OFFLINE_LOCAL_URLMAP = OfflinebrewConfig.urlmap_path
 
 config = JSON.parse File.read(BREW_OFFLINE_LOCAL_CONFIG), symbolize_names: true
 baseurl = config[:baseurl]
