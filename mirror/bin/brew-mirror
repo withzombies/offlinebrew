@@ -7,9 +7,23 @@
 require "optparse"
 require "json"
 require "securerandom"
+require_relative "../lib/homebrew_paths"
+require_relative "../lib/safe_shell"
+require_relative "../lib/cask_helpers"
+require_relative "../lib/container_helpers"
+require_relative "../lib/download_helpers"
+require_relative "../lib/url_helpers"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
+
+# Load Cask API if available
+begin
+  require "cask/cask_loader"
+  require "cask/cask"
+rescue LoadError
+  # Cask API not available - cask mirroring will be skipped
+end
 
 # Represents a mirrorable resource.
 # A `fetchable` is anything that responds to `#fetch`.
@@ -69,6 +83,7 @@ options = {
   sleep: 0.5,
   config_only: false,
   iterator: Formula,
+  casks: nil,
 }
 
 OptionParser.new do |parser|
@@ -89,6 +104,10 @@ OptionParser.new do |parser|
   parser.on "-f", "--formulae f1,f2,f2", Array, "mirror just the given formulae" do |formulae|
     options[:iterator] = formulae.map { |f| Formula[f] }
   end
+
+  parser.on "--casks c1,c2,c3", Array, "mirror just the given casks" do |casks|
+    options[:casks] = casks
+  end
 end.parse!
 
 abort "Fatal: the output directory must exist" unless Dir.exist?(options[:directory])
@@ -99,23 +118,50 @@ ohai "Writing brew-offline config..."
 
 config = {}
 
-commit = begin
-  core_dir = File.join HOMEBREW_LIBRARY, "Taps/homebrew/homebrew-core"
-  Dir.chdir core_dir do
-    `git rev-parse HEAD`.chomp
-  end
+# Get commit hash for homebrew-core
+core_dir = HomebrewPaths.core_tap_path
+abort "Fatal: homebrew-core tap not found at #{core_dir}" unless HomebrewPaths.tap_exists?("homebrew", "homebrew-core")
+core_commit = HomebrewPaths.core_tap_commit
+
+# Get commit hash for homebrew-cask (if it exists)
+cask_commit = if HomebrewPaths.cask_tap_exists?
+                HomebrewPaths.cask_tap_commit
+              else
+                opoo "homebrew-cask tap not found, skipping cask mirroring"
+                nil
+              end
+
+# Store tap information
+config[:taps] = {
+  "homebrew/homebrew-core" => {
+    "commit" => core_commit,
+    "type" => "formula",
+  },
+}
+
+if cask_commit
+  config[:taps]["homebrew/homebrew-cask"] = {
+    "commit" => cask_commit,
+    "type" => "cask",
+  }
 end
 
-config[:commit] = commit
+# Legacy fields for backward compatibility
+config[:commit] = core_commit  # Old format
 config[:stamp] = Time.now.to_i.to_s
 config[:cache] = options[:directory]
 config[:baseurl] = options[:baseurl]
 
 File.write File.join(options[:directory], "config.json"), config.to_json
 
-exit if options[:config_only]
-
+# Initialize urlmap (will be empty in config-only mode)
 urlmap = {}
+
+# In config-only mode, write empty urlmap and exit early
+if options[:config_only]
+  File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
+  exit
+end
 
 # Finally, fetch the (stable) resources for each formula in homebrew-core.
 options[:iterator].each do |formula|
@@ -174,7 +220,12 @@ options[:iterator].each do |formula|
 
   resources.each do |res|
     # We'll do the logging here.
-    res.downloader.shutup!
+    # Suppress downloader output (quiet! in newer Homebrew, shutup! in older versions)
+    if res.downloader.respond_to?(:quiet!)
+      res.downloader.quiet!
+    elsif res.downloader.respond_to?(:shutup!)
+      res.downloader.shutup!
+    end
     ohai "\tResource url: #{res.url}"
 
     old_location = res.downloader.cached_location
@@ -191,11 +242,179 @@ options[:iterator].each do |formula|
       ohai "\t#{old_location} -> #{new_location}"
     end
 
-    # Add to the urlmap regardless.
-    urlmap[res.url] = new_location.basename
+    # Add to the urlmap (with URL variants for better matching)
+    url_str = res.url.to_s
+    urlmap[url_str] = new_location.basename
+
+    # Also add clean URL variant (without query/fragment) for easier matching
+    clean_url = URLHelpers.clean_url(url_str)
+    urlmap[clean_url] = new_location.basename unless clean_url == url_str
   end
 
   sleep options[:sleep]
 end
 
+# Mirror casks if homebrew-cask tap exists and cask API is available
+if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
+  ohai "Mirroring casks from homebrew/homebrew-cask..."
+
+  # Determine which casks to mirror
+  cask_iterator = if options[:casks]
+                    # Specific casks requested via CLI
+                    CaskHelpers.load_casks(options[:casks])
+                  else
+                    # All casks
+                    CaskHelpers.all_casks
+                  end
+
+  cask_iterator.each do |cask|
+    ohai "Collecting resources for cask: #{cask.token}..."
+
+    # Casks have a simpler structure than formulae
+    # They typically have one URL that points to the application bundle
+    begin
+      # Skip casks without URLs
+      unless CaskHelpers.has_url?(cask)
+        opoo "#{cask.token} has no downloadable URL, skipping"
+        next
+      end
+
+      url = cask.url
+      url_str = url.to_s
+      ohai "\tCask URL: #{url_str}"
+
+      # Determine download strategy
+      # Casks typically use CurlDownloadStrategy
+      downloader = url.downloader
+
+      unless BREW_OFFLINE_DOWNLOAD_STRATEGIES.include?(downloader.class)
+        opoo "#{cask.token} uses unsupported download strategy: #{downloader.class}"
+        next
+      end
+
+      # Create a sensible identifier (casks usually have checksums)
+      checksum = CaskHelpers.checksum(cask)
+      identifier = if checksum && checksum != :no_check
+                     checksum.to_s
+                   else
+                     # No checksum, use URL-based hash
+                     require "digest"
+                     Digest::SHA256.hexdigest(url_str)
+                   end
+
+      # Detect container extension (DMG, PKG, ZIP, etc.)
+      extension = ContainerHelpers.detect_extension(url_str)
+      new_location = Pathname.new(File.join(options[:directory],
+                                            "#{identifier}#{extension}"))
+
+      # Check if already downloaded to mirror
+      if new_location.exist?
+        ohai "\tAlready mirrored: #{ContainerHelpers.human_size(new_location)}"
+        ohai "\t  Type: #{ContainerHelpers.container_type(new_location)}"
+
+        # Add to urlmap (with URL variants for better matching)
+        urlmap[url_str] = new_location.basename.to_s
+
+        # Also add clean URL variant (without query/fragment) for easier matching
+        clean_url = URLHelpers.clean_url(url_str)
+        urlmap[clean_url] = new_location.basename.to_s unless clean_url == url_str
+
+        next  # Skip to next cask
+      end
+
+      # Download with retry logic
+      # Suppress downloader output (quiet! in newer Homebrew, shutup! in older versions)
+      if downloader.respond_to?(:quiet!)
+        downloader.quiet!
+      elsif downloader.respond_to?(:shutup!)
+        downloader.shutup!
+      end
+
+      # Check if already in Homebrew cache
+      if DownloadHelpers.cached?(downloader)
+        cached_size = DownloadHelpers.cached_size(downloader)
+        ohai "\tFound in Homebrew cache: #{ContainerHelpers.human_size(Pathname.new(cached_size.to_s))}" if cached_size
+      else
+        ohai "\tDownloading..."
+        start_time = Time.now
+
+        unless DownloadHelpers.fetch_with_retry(downloader, max_retries: 2)
+          opoo "Download failed for #{url_str} after retries"
+          next
+        end
+
+        elapsed = Time.now - start_time
+        ohai "\tDownload completed in #{elapsed.round(1)}s"
+      end
+
+      # Move from cache to mirror location
+      old_location = downloader.cached_location
+      unless old_location.exist?
+        opoo "Downloaded file not found at #{old_location}"
+        next
+      end
+
+      FileUtils.mv old_location.to_s, new_location.to_s, force: true
+
+      # Verify the container
+      if ContainerHelpers.verify_container(new_location)
+        ohai "\t✓ Verified: #{ContainerHelpers.human_size(new_location)}"
+        ohai "\t  Type: #{ContainerHelpers.container_type(new_location)}"
+      else
+        opoo "\t⚠ Verification failed (file may be corrupted)"
+        ohai "\t  Size: #{ContainerHelpers.human_size(new_location)}"
+      end
+
+      # Verify checksum if available
+      if checksum && checksum != :no_check
+        if DownloadHelpers.verify_checksum(new_location, checksum)
+          ohai "\t✓ Checksum verified"
+        else
+          opoo "\t⚠ Checksum mismatch!"
+        end
+      end
+
+      # Add to urlmap (with URL variants for better matching)
+      urlmap[url_str] = new_location.basename.to_s
+
+      # Also add clean URL variant (without query/fragment) for easier matching
+      clean_url = URLHelpers.clean_url(url_str)
+      urlmap[clean_url] = new_location.basename.to_s unless clean_url == url_str
+
+    rescue StandardError => e
+      opoo "Failed to mirror cask #{cask.token}: #{e.message}"
+      puts "  #{e.backtrace.first(3).join("\n  ")}" if ENV["HOMEBREW_VERBOSE"]
+      next
+    end
+
+    sleep options[:sleep]
+  end
+
+  # Print cask mirror statistics
+  ohai "Cask mirror statistics:"
+  cask_count = cask_iterator.count
+  puts "  Casks processed: #{cask_count}"
+
+  # Count files by extension
+  cask_files = Dir.glob("#{options[:directory]}/*.{dmg,pkg,zip,tar.gz}").select { |f| File.file?(f) }
+  puts "  Container files: #{cask_files.count}"
+
+  # Calculate total size
+  if cask_files.any?
+    total_bytes = cask_files.sum { |f| File.size(f) }
+    require_relative "../lib/container_helpers"
+    total_size = ContainerHelpers.human_size(Pathname.new(total_bytes.to_s))
+    puts "  Total cask size: #{total_size}"
+  end
+
+  puts ""
+else
+  if !CaskHelpers.cask_api_available?
+    ohai "Skipping cask mirroring (Cask API not available)"
+  elsif !HomebrewPaths.cask_tap_exists?
+    ohai "Skipping cask mirroring (homebrew-cask tap not found)"
+  end
+end
+
+# Write urlmap.json
 File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
