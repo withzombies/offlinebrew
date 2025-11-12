@@ -172,7 +172,11 @@ end
 
 # Helper function to normalize tap names
 # Homebrew API returns "homebrew/core" but we store "homebrew/homebrew-core"
+# Also handles case sensitivity (Homebrew/core vs homebrew/core)
 def normalize_tap_name(tap_name)
+  # First, convert to lowercase for case-insensitive matching
+  tap_name = tap_name.downcase
+
   # Convert short form to full form
   # "homebrew/core" -> "homebrew/homebrew-core"
   # "homebrew/cask" -> "homebrew/homebrew-cask"
