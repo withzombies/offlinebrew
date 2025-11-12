@@ -41,6 +41,36 @@ mirror/test/
     └── test_full_workflow.rb
 ```
 
+## Executable Invocation: Critical Discovery
+
+**IMPORTANT:** The executables (`brew-mirror`, `brew-offline-install`) have shebang `#!/usr/bin/env brew ruby` which means they should be executed **DIRECTLY**, not via `brew ruby`:
+
+```bash
+# ✓ CORRECT: Direct execution (shebang handles brew ruby)
+./bin/brew-mirror -f jq -d /tmp/mirror
+./bin/brew-offline-install jq
+
+# ✗ WRONG: Explicit brew ruby invocation (double-invokes, causes errors)
+brew ruby bin/brew-mirror -f jq           # Error: invalid option: -f
+brew ruby -- bin/brew-mirror --formulae jq # Error: invalid option: --formulae
+```
+
+**Why This Matters:**
+- The shebang automatically uses `brew ruby` as the interpreter
+- Explicitly calling `brew ruby bin/brew-mirror` double-invokes brew ruby
+- This causes option parsing conflicts where brew ruby tries to parse the script's options
+- Resulted in multiple CI failures before discovery
+
+**When to Use `brew ruby`:**
+- Running test scripts WITHOUT brew ruby shebang: `brew ruby test/test_api.rb`
+- Running one-liners: `brew ruby -e "puts Formula['jq'].version"`
+
+**When NOT to Use `brew ruby`:**
+- Running executables WITH brew ruby shebang (bin/brew-mirror, bin/brew-offline-install)
+- Integration tests that execute the actual binaries
+
+See `test/test_brew_ruby_command_syntax.rb` for TDD tests documenting this behavior.
+
 ## Testing Strategy by Executable
 
 ### 1. brew-offline-curl
