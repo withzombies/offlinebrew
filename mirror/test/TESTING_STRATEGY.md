@@ -47,19 +47,18 @@ mirror/test/
 
 ### brew-mirror
 - Shebang: `#!/usr/bin/env brew ruby` (broken for direct execution)
-- **MUST** invoke via: `brew ruby bin/brew-mirror`
-- **MUST** use SHORT options only: `-f`, `-d`, `-c`
-- **CANNOT** use long options: `--formulae`, `--directory`, `--config-only`
+- **CORRECT INVOCATION**: `brew mirror` (Homebrew external command pattern)
+- Supports all options (short and long): `-f`, `--formulae`, `-d`, `--directory`, `-c`, `--config-only`
 
 ```bash
-# ✓ CORRECT: Via brew ruby with SHORT options
-brew ruby bin/brew-mirror -f jq -d /tmp/mirror -c
+# ✓ CORRECT: Use as Homebrew external command
+brew mirror -f jq -d /tmp/mirror --config-only
 
-# ✗ WRONG: Direct execution (shebang is broken)
-./bin/brew-mirror -f jq              # env: 'brew ruby': No such file or directory
+# ✓ CORRECT: Long options work fine
+brew mirror --formulae jq --directory /tmp/mirror
 
-# ✗ WRONG: Long options cause parsing errors
-brew ruby bin/brew-mirror --formulae jq   # Error: invalid option: --formulae
+# Requires brew-mirror executable in PATH
+PATH=/path/to/bin:$PATH brew mirror -f jq -d /tmp
 ```
 
 ### brew-offline-install
@@ -67,22 +66,19 @@ brew ruby bin/brew-mirror --formulae jq   # Error: invalid option: --formulae
 - Can execute directly: `./bin/brew-offline-install jq`
 - Loads Homebrew libraries at runtime
 
-**Why brew-mirror Shebang Is Broken:**
-- `#!/usr/bin/env brew ruby` tries to find a program named "brew ruby" (as one word)
-- `env` doesn't handle multi-word interpreters portably
-- The `-S` flag (`#!/usr/bin/env -S brew ruby`) would work but isn't portable
+**Why `brew mirror` Works:**
+- Homebrew external commands follow pattern: `brew-<name>` executable → `brew <name>` command
+- When you run `brew mirror`, Homebrew finds `brew-mirror` in PATH and executes it
+- The shebang `#!/usr/bin/env brew ruby` is used by Homebrew to load libraries
+- Arguments are passed directly to the script WITHOUT brew ruby's option parser interfering
 
-**Why SHORT Options Only:**
-- `brew ruby` uses OptionParser which consumes long options before passing to script
-- Short options are passed through correctly
-- This is a Homebrew limitation, not our bug
+**Why Previous Approaches Failed:**
+- `./bin/brew-mirror` (direct): env can't find multi-word command "brew ruby"
+- `brew ruby bin/brew-mirror -f jq`: brew ruby's OptionParser consumed `-f` before script ran
+- **Solution**: Use `brew mirror` which bypasses brew ruby's CLI parser
 
-**Working Example from CI:**
-```yaml
-brew ruby bin/brew-mirror -d /tmp/test-mirror-ci -c  # ✓ Works
-```
-
-See `test/test_brew_ruby_command_syntax.rb` for TDD tests documenting this behavior.
+**Key Discovery:**
+The CI example `brew ruby bin/brew-mirror -d /tmp -c || true` has `|| true` because it's **allowed to fail** - not a working pattern!
 
 ## Testing Strategy by Executable
 

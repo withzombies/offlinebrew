@@ -131,9 +131,12 @@ class TestFullWorkflow < Minitest::Test
     Dir.mktmpdir do |tmpdir|
       puts "\n[Test] Running brew-mirror --config-only..."
 
+      # Use 'brew mirror' command (brew finds brew-mirror executable in PATH)
+      # This avoids brew ruby's option parser conflicts
+      bin_dir = File.dirname(brew_mirror_path)
       result = run_command(
-        "brew ruby #{brew_mirror_path} -f #{TEST_FORMULA} -c -d #{tmpdir}",
-        env: {}
+        "brew mirror -f #{TEST_FORMULA} -c -d #{tmpdir}",
+        env: { "PATH" => "#{bin_dir}:#{ENV['PATH']}" }
       )
 
       # Config-only should succeed
@@ -243,9 +246,11 @@ class TestFullWorkflow < Minitest::Test
     puts "  - Running brew-mirror --formulae #{formula}"
     puts "  - Mirror directory: #{tmpdir}"
 
+    # Use 'brew mirror' command (brew finds brew-mirror executable in PATH)
+    bin_dir = File.dirname(brew_mirror_path)
     result = run_command(
-      "brew ruby #{brew_mirror_path} -f #{formula} -d #{tmpdir}",
-      env: {}
+      "brew mirror -f #{formula} -d #{tmpdir}",
+      env: { "PATH" => "#{bin_dir}:#{ENV['PATH']}" }
     )
 
     unless result[:success]
