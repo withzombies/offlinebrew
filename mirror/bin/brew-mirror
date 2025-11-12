@@ -435,10 +435,36 @@ if CaskHelpers.cask_api_available? && !cask_taps.empty?
 
       # Determine download strategy
       # Casks typically use CurlDownloadStrategy
-      downloader = url.downloader
+      # Modern Homebrew's Cask::URL doesn't have a .downloader method,
+      # so we need to instantiate the strategy ourselves
+      begin
+        # Try to get download strategy from URL metadata if available
+        if url.respond_to?(:download_strategy)
+          strategy_class = url.download_strategy
+        else
+          # Default to CurlDownloadStrategy for casks (most common)
+          strategy_class = CurlDownloadStrategy
+        end
 
-      unless BREW_OFFLINE_DOWNLOAD_STRATEGIES.include?(downloader.class)
-        opoo "#{cask.token} uses unsupported download strategy: #{downloader.class}"
+        unless BREW_OFFLINE_DOWNLOAD_STRATEGIES.include?(strategy_class)
+          opoo "#{cask.token} uses unsupported download strategy: #{strategy_class}"
+          next
+        end
+
+        # Instantiate the downloader with cask metadata
+        # Try different constructor signatures for compatibility
+        downloader = begin
+          # Modern Homebrew: url, name, version
+          strategy_class.new(url_str, cask.token, cask.version)
+        rescue ArgumentError
+          # Fallback: url, name
+          strategy_class.new(url_str, cask.token)
+        rescue ArgumentError
+          # Fallback: url only
+          strategy_class.new(url_str)
+        end
+      rescue => e
+        opoo "Failed to create downloader for #{cask.token}: #{e.message}"
         next
       end
 
