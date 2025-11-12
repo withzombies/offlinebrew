@@ -13,6 +13,7 @@ require_relative "../lib/cask_helpers"
 require_relative "../lib/container_helpers"
 require_relative "../lib/download_helpers"
 require_relative "../lib/url_helpers"
+require_relative "../lib/tap_manager"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
@@ -84,6 +85,7 @@ options = {
   config_only: false,
   iterator: Formula,
   casks: nil,
+  taps: ["homebrew/homebrew-core", "homebrew/homebrew-cask"],  # Default taps
 }
 
 OptionParser.new do |parser|
@@ -108,46 +110,51 @@ OptionParser.new do |parser|
   parser.on "--casks c1,c2,c3", Array, "mirror just the given casks" do |casks|
     options[:casks] = casks
   end
+
+  parser.on "--taps tap1,tap2", Array, "specify taps to mirror (default: core,cask)" do |taps|
+    options[:taps] = taps
+  end
 end.parse!
 
 abort "Fatal: the output directory must exist" unless Dir.exist?(options[:directory])
 
-# Dump the homebrew-core commit we're mirroring at, the timestamp,
+# Dump the configured taps' commits, the timestamp,
 # and the path of our cache to the directory that brew-offline reads.
 ohai "Writing brew-offline config..."
 
 config = {}
+config[:taps] = {}
 
-# Get commit hash for homebrew-core
-core_dir = HomebrewPaths.core_tap_path
-abort "Fatal: homebrew-core tap not found at #{core_dir}" unless HomebrewPaths.tap_exists?("homebrew", "homebrew-core")
-core_commit = HomebrewPaths.core_tap_commit
+# Process each configured tap
+options[:taps].each do |tap_name|
+  unless TapManager.tap_installed?(tap_name)
+    opoo "Tap not installed: #{tap_name}, skipping"
+    next
+  end
 
-# Get commit hash for homebrew-cask (if it exists)
-cask_commit = if HomebrewPaths.cask_tap_exists?
-                HomebrewPaths.cask_tap_commit
-              else
-                opoo "homebrew-cask tap not found, skipping cask mirroring"
-                nil
-              end
+  commit = TapManager.tap_commit(tap_name)
+  unless commit
+    opoo "Could not get commit for #{tap_name}, skipping"
+    next
+  end
 
-# Store tap information
-config[:taps] = {
-  "homebrew/homebrew-core" => {
-    "commit" => core_commit,
-    "type" => "formula",
-  },
-}
+  tap_type = TapManager.tap_type(tap_name)
 
-if cask_commit
-  config[:taps]["homebrew/homebrew-cask"] = {
-    "commit" => cask_commit,
-    "type" => "cask",
+  config[:taps][tap_name] = {
+    "commit" => commit,
+    "type" => tap_type,
   }
+
+  ohai "Will mirror #{tap_name} (#{tap_type}) at commit #{commit[0..7]}"
 end
 
+# Ensure at least one tap configured
+abort "Fatal: No valid taps configured!" if config[:taps].empty?
+
 # Legacy fields for backward compatibility
-config[:commit] = core_commit  # Old format
+# Use first tap's commit (usually homebrew-core) for old format
+first_tap = config[:taps].values.first
+config[:commit] = first_tap["commit"] if first_tap
 config[:stamp] = Time.now.to_i.to_s
 config[:cache] = options[:directory]
 config[:baseurl] = options[:baseurl]
@@ -163,12 +170,11 @@ if options[:config_only]
   exit
 end
 
-# Finally, fetch the (stable) resources for each formula in homebrew-core.
+# Finally, fetch the (stable) resources for each formula from configured taps.
 options[:iterator].each do |formula|
-  # Skip formulae that aren't in the core tap.
-  # TODO(ww): We can probably make a whitelist of other taps to mirror,
-  # and expose it as a configuration or CLI option.
-  next unless formula.tap.core_tap?
+  # Skip formulae that aren't in configured taps
+  formula_tap_name = "#{formula.tap.user}/#{formula.tap.repo}"
+  next unless config[:taps].key?(formula_tap_name)
 
   ohai "Collecting resources for #{formula.name}..."
 
@@ -254,20 +260,35 @@ options[:iterator].each do |formula|
   sleep options[:sleep]
 end
 
-# Mirror casks if homebrew-cask tap exists and cask API is available
-if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
-  ohai "Mirroring casks from homebrew/homebrew-cask..."
+# Mirror casks from all configured cask taps
+cask_taps = config[:taps].select { |tap_name, tap_info|
+  tap_type = tap_info["type"] || tap_info[:type]
+  tap_type == "cask" || tap_type == "mixed"
+}
 
-  # Determine which casks to mirror
-  cask_iterator = if options[:casks]
-                    # Specific casks requested via CLI
-                    CaskHelpers.load_casks(options[:casks])
-                  else
-                    # All casks
-                    CaskHelpers.all_casks
-                  end
+if CaskHelpers.cask_api_available? && !cask_taps.empty?
+  cask_taps.each do |tap_name, tap_info|
+    ohai "Mirroring casks from #{tap_name}..."
+
+    # Determine which casks to mirror
+    cask_iterator = if options[:casks]
+                      # Specific casks requested via CLI
+                      CaskHelpers.load_casks(options[:casks])
+                    else
+                      # All casks from this tap
+                      # For now, CaskHelpers.all_casks returns all installed casks
+                      # We'll filter by tap name below
+                      CaskHelpers.all_casks
+                    end
 
   cask_iterator.each do |cask|
+    # Skip casks that aren't from this tap
+    # Only filter by tap if we're not mirroring specific casks via --casks
+    if !options[:casks] && cask.respond_to?(:tap) && cask.tap
+      cask_tap_name = "#{cask.tap.user}/#{cask.tap.repo}"
+      next unless cask_tap_name == tap_name
+    end
+
     ohai "Collecting resources for cask: #{cask.token}..."
 
     # Casks have a simpler structure than formulae
@@ -389,11 +410,10 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
 
     sleep options[:sleep]
   end
+  end  # end of cask_taps.each
 
-  # Print cask mirror statistics
+  # Print overall cask mirror statistics
   ohai "Cask mirror statistics:"
-  cask_count = cask_iterator.count
-  puts "  Casks processed: #{cask_count}"
 
   # Count files by extension
   cask_files = Dir.glob("#{options[:directory]}/*.{dmg,pkg,zip,tar.gz}").select { |f| File.file?(f) }
