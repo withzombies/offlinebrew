@@ -173,7 +173,17 @@ end
 # Finally, fetch the (stable) resources for each formula from configured taps.
 options[:iterator].each do |formula|
   # Skip formulae that aren't in configured taps
-  formula_tap_name = "#{formula.tap.user}/#{formula.tap.repo}"
+  # Handle different tap types (CoreTap, Tap, etc.)
+  formula_tap_name = if formula.tap.respond_to?(:full_name)
+                       formula.tap.full_name
+                     elsif formula.tap.core_tap?
+                       "homebrew/homebrew-core"
+                     elsif formula.tap.respond_to?(:user) && formula.tap.respond_to?(:repo)
+                       "#{formula.tap.user}/#{formula.tap.repo}"
+                     else
+                       # Fallback: try to get name from tap
+                       formula.tap.to_s
+                     end
   next unless config[:taps].key?(formula_tap_name)
 
   ohai "Collecting resources for #{formula.name}..."
@@ -285,7 +295,15 @@ if CaskHelpers.cask_api_available? && !cask_taps.empty?
     # Skip casks that aren't from this tap
     # Only filter by tap if we're not mirroring specific casks via --casks
     if !options[:casks] && cask.respond_to?(:tap) && cask.tap
-      cask_tap_name = "#{cask.tap.user}/#{cask.tap.repo}"
+      # Handle different tap types (CoreTap, Tap, etc.)
+      cask_tap_name = if cask.tap.respond_to?(:full_name)
+                        cask.tap.full_name
+                      elsif cask.tap.respond_to?(:user) && cask.tap.respond_to?(:repo)
+                        "#{cask.tap.user}/#{cask.tap.repo}"
+                      else
+                        # Fallback: try to get name from tap
+                        cask.tap.to_s
+                      end
       next unless cask_tap_name == tap_name
     end
 
