@@ -39,29 +39,59 @@ rescue NameError => e
   abort "FATAL: Cannot continue without Formula class"
 end
 
-# Test 4: Check Formula iteration methods
+# Test 4: Check Formula iteration methods (what brew-mirror uses)
+# brew-mirror line 125: options[:iterator].each do |formula|
+# where options[:iterator] is Formula (line 73)
 puts "  Testing Formula iteration..."
 iterator_method = nil
-begin
-  # Try new API first (Formula.all)
-  if Formula.respond_to?(:all)
-    iterator_method = "Formula.all"
-    puts "  ✓ Formula.all method exists"
+iterator_available = false
 
-    # Note: In modern Homebrew, Formula.all requires HOMEBREW_EVAL_ALL=1
-    # We don't need to actually iterate to test API compatibility
-    puts "  ✓ Formula iteration: #{iterator_method} (available)"
-  # Fall back to old API (Formula.each)
-  elsif Formula.respond_to?(:each)
+begin
+  # Test what brew-mirror ACTUALLY uses: Formula.each
+  # This is called on line 125 of brew-mirror
+  if Formula.respond_to?(:each)
     iterator_method = "Formula.each"
-    puts "  ✓ Formula.each method exists"
-    puts "  ⚠ Warning: Formula.each may be deprecated, prefer Formula.all"
+    puts "  ✓ Formula.each method exists (used by brew-mirror)"
+
+    # Try to verify it's actually iterable (but don't enumerate all)
+    # Just check that calling .each with a block doesn't crash
+    begin
+      # Use lazy enumeration to avoid loading all formulae
+      Formula.each do |_formula|
+        # Found at least one formula, that's enough
+        iterator_available = true
+        break
+      end
+      puts "  ✓ Formula.each is functional"
+    rescue StandardError => e
+      # If .each exists but requires HOMEBREW_EVAL_ALL, that's OK
+      if e.message.include?("HOMEBREW_EVAL_ALL")
+        puts "  ⚠ Formula.each requires HOMEBREW_EVAL_ALL=1"
+        puts "    (brew-mirror will need to set this)"
+        iterator_available = true  # Method exists, just needs env var
+      else
+        puts "  ✗ Formula.each failed: #{e.message}"
+      end
+    end
+  # If Formula.each doesn't exist, check if Formula.all works as alternative
+  elsif Formula.respond_to?(:all)
+    iterator_method = "Formula.all (fallback)"
+    puts "  ⚠ Formula.each not found (brew-mirror uses this!)"
+    puts "  ✓ Formula.all method exists as alternative"
+    puts "  ⚠ brew-mirror may need update to use Formula.all.each"
+    iterator_available = true
+  else
+    abort "  ✗ No Formula iteration method found (tried .each and .all)"
+  end
+
+  if iterator_available
     puts "  ✓ Formula iteration: #{iterator_method} (available)"
   else
-    abort "  ✗ No Formula iteration method found (tried .all and .each)"
+    abort "  ✗ Formula iteration not functional"
   end
 rescue StandardError => e
   puts "  ✗ Formula iteration check failed: #{e.message}"
+  puts "    #{e.backtrace.first}"
   abort "FATAL: Cannot check formula iteration methods"
 end
 
