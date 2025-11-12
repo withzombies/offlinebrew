@@ -1,8 +1,8 @@
 # Implementation Status
 
 **Last Updated**: 2025-11-12
-**Current Phase**: Phase 2 - Cask Support
-**Overall Progress**: 10/20 tasks complete (50%)
+**Current Phase**: Phase 2 - Cask Support ✅ COMPLETE
+**Overall Progress**: 11/20 tasks complete (55%)
 
 ---
 
@@ -172,11 +172,12 @@
 
 ---
 
-## Phase 2: Cask Support
+## Phase 2: Cask Support ✅ COMPLETE
 
-**Status**: 🚧 In Progress (3/4 tasks complete - 75%)
-**Duration**: 16-24 hours (estimated)
+**Status**: ✅ Complete (4/4 tasks complete - 100%)
+**Duration**: ~8 hours (actual)
 **Started**: 2025-11-12
+**Completed**: 2025-11-12
 
 ### Task 2.1: Add Homebrew-Cask Tap Mirroring ✅
 
@@ -353,8 +354,88 @@
 
 ---
 
-### Task 2.4: Update URL Shims for Casks
-**Status**: ⏳ Not Started
+### Task 2.4: Update URL Shims for Casks ✅
+
+**Status**: ✅ Complete
+**Time Spent**: ~2 hours
+**Completed**: 2025-11-12
+**Commit**: ad296c7
+
+**What was done**:
+- Created URLHelpers module for URL normalization
+- Enhanced brew-offline-curl with intelligent URL matching
+- Updated brew-mirror to store URL variants
+- Added debug mode for troubleshooting
+- Created comprehensive URL helpers test suite
+
+**Files Created**:
+- `mirror/lib/url_helpers.rb` (125 lines)
+  - normalize_for_matching(url) - Generates URL variants
+  - find_in_urlmap(url, urlmap) - Smart URL lookup
+  - clean_url(url) - Strips query/fragment
+  - equivalent?(url1, url2) - URL comparison
+
+- `mirror/test/test_url_helpers.rb` (155 lines)
+  - 19 test cases covering all URL patterns
+  - All tests pass ✓
+
+**Files Modified**:
+- `mirror/bin/brew-offline-curl`
+  - Uses URLHelpers for URL matching
+  - Added debug() function for BREW_OFFLINE_DEBUG
+  - Shows helpful warnings and variant listings
+  - Detects HEAD requests
+
+- `mirror/bin/brew-mirror`
+  - Stores both original and clean URLs in urlmap
+  - Applied to 3 urlmap update locations
+  - Better cask URL compatibility
+
+**Features**:
+- ✅ Handles URLs with query parameters
+- ✅ Handles URLs with fragments
+- ✅ Handles trailing slashes
+- ✅ Handles URL encoding variations
+- ✅ Debug mode with BREW_OFFLINE_DEBUG=1
+- ✅ HEAD request detection
+- ✅ Clear error messages
+
+**URL Matching Examples**:
+- `https://example.com/file.dmg?version=1.0` → matches `https://example.com/file.dmg`
+- `https://example.com/file.dmg#download` → matches `https://example.com/file.dmg`
+- `https://example.com/file.dmg?v=1&x=2#start` → matches `https://example.com/file.dmg`
+
+**Debug Output Example**:
+```
+[brew-offline-curl] Looking up URL: https://example.com/file.dmg?v=1.0
+[brew-offline-curl] ✓ Found mapping: https://example.com/file.dmg?v=1.0 -> abc123.dmg
+```
+
+**Deliverables**:
+- ✅ URLHelpers module
+- ✅ Enhanced brew-offline-curl
+- ✅ Updated brew-mirror
+- ✅ Comprehensive tests (all passing)
+
+**Acceptance Criteria**:
+- ✅ URLs with query parameters work
+- ✅ URLs with fragments work
+- ✅ URL normalization module functional
+- ✅ Debug output available
+- ✅ HEAD requests handled
+- ✅ Tests pass
+
+---
+
+**🎉 PHASE 2 COMPLETE! 🎉**
+
+All cask support functionality implemented:
+- ✅ Task 2.1: Cask tap mirroring
+- ✅ Task 2.2: Cask download logic
+- ✅ Task 2.3: Cask installation support
+- ✅ Task 2.4: URL shims for casks
+
+Offlinebrew now fully supports both formulae and casks!
 
 ---
 
