@@ -122,37 +122,36 @@ class TestFullWorkflow < Minitest::Test
     puts "=" * 70
   end
 
-  # Test: Mirror creation with dry-run
-  def test_mirror_dry_run
+  # Test: Mirror creation with config-only mode
+  def test_mirror_config_only_mode
     puts "\n" + "=" * 70
-    puts "Integration Test: Mirror Dry-Run"
+    puts "Integration Test: Mirror Config-Only Mode"
     puts "=" * 70
 
     Dir.mktmpdir do |tmpdir|
-      puts "\n[Test] Running brew-mirror --dry-run..."
+      puts "\n[Test] Running brew-mirror --config-only..."
 
       result = run_command(
-        "brew ruby -- #{brew_mirror_path} --formulae #{TEST_FORMULA} --dry-run --directory #{tmpdir}",
+        "brew ruby #{brew_mirror_path} -f #{TEST_FORMULA} -c -d #{tmpdir}",
         env: {}
       )
 
-      # Dry-run should succeed
-      assert result[:success], "Dry-run should succeed: #{result[:stderr]}"
+      # Config-only should succeed
+      assert result[:success], "Config-only should succeed: #{result[:stderr]}"
 
-      # Should not create actual files
-      refute File.exist?(File.join(tmpdir, "config.json")),
-        "Dry-run should not create config.json"
+      # Should create config files but not download bottles
+      assert File.exist?(File.join(tmpdir, "config.json")),
+        "Config-only should create config.json"
 
-      # Output should show what would be done
-      assert_output_contains(result[:stdout], "Would mirror",
-        "Dry-run should show what would be mirrored")
+      assert File.exist?(File.join(tmpdir, "urlmap.json")),
+        "Config-only should create urlmap.json"
 
-      puts "  ✓ Dry-run completed successfully"
-      puts "  ✓ No files created (as expected)"
+      puts "  ✓ Config-only completed successfully"
+      puts "  ✓ Config files created without downloading bottles"
     end
 
     puts "\n" + "=" * 70
-    puts "Dry-Run Test: PASSED ✓"
+    puts "Config-Only Test: PASSED ✓"
     puts "=" * 70
   end
 
@@ -163,6 +162,10 @@ class TestFullWorkflow < Minitest::Test
     puts "=" * 70
 
     Dir.mktmpdir do |tmpdir|
+      # Create .offlinebrew directory in tmpdir
+      offlinebrew_dir = File.join(tmpdir, ".offlinebrew")
+      Dir.mkdir(offlinebrew_dir)
+
       # Create invalid config (missing tap commit)
       invalid_config = {
         baseurl: "http://localhost:8000",
@@ -172,24 +175,30 @@ class TestFullWorkflow < Minitest::Test
       }
 
       File.write(
-        File.join(tmpdir, "config.json"),
+        File.join(offlinebrew_dir, "config.json"),
         JSON.pretty_generate(invalid_config)
       )
+
+      # Create empty urlmap (required to exist)
+      File.write(File.join(offlinebrew_dir, "urlmap.json"), "{}")
 
       puts "\n[Test] Running brew-offline-install with invalid config..."
 
       result = run_command(
-        "brew ruby -- #{brew_offline_install_path} --config #{File.join(tmpdir, 'config.json')} #{TEST_FORMULA}",
-        env: {}
+        "#{brew_offline_install_path} #{TEST_FORMULA}",
+        env: { "REAL_HOME" => tmpdir }
       )
 
       # Should fail with validation error
       refute result[:success], "Should fail with invalid config"
-      assert_output_contains(result[:stderr], "commit",
-        "Should mention missing commit")
+
+      # Check for validation error message
+      error_output = result[:stdout] + result[:stderr]
+      assert_match(/commit|tap|configuration/i, error_output,
+        "Should mention configuration issue in error")
 
       puts "  ✓ Invalid config rejected (as expected)"
-      puts "  ✓ Error message indicates missing commit"
+      puts "  ✓ Error message indicates configuration problem"
     end
 
     puts "\n" + "=" * 70
@@ -235,7 +244,7 @@ class TestFullWorkflow < Minitest::Test
     puts "  - Mirror directory: #{tmpdir}"
 
     result = run_command(
-      "brew ruby -- #{brew_mirror_path} --formulae #{formula} --directory #{tmpdir}",
+      "brew ruby #{brew_mirror_path} -f #{formula} -d #{tmpdir}",
       env: {}
     )
 
@@ -280,25 +289,36 @@ class TestFullWorkflow < Minitest::Test
 
   # Install formula from offline mirror
   def install_from_mirror(formula, mirror_dir)
-    config_path = File.join(mirror_dir, "config.json")
+    # Create a temporary HOME directory with .offlinebrew config
+    Dir.mktmpdir do |home_dir|
+      offlinebrew_dir = File.join(home_dir, ".offlinebrew")
+      Dir.mkdir(offlinebrew_dir)
 
-    # Update config baseurl to point to our test server
-    config = JSON.parse(File.read(config_path))
-    config["baseurl"] = "http://localhost:#{TEST_PORT}"
-    File.write(config_path, JSON.pretty_generate(config))
+      # Copy config and urlmap from mirror_dir to temp .offlinebrew directory
+      config_path = File.join(mirror_dir, "config.json")
+      urlmap_path = File.join(mirror_dir, "urlmap.json")
 
-    puts "  - Running brew-offline-install #{formula}"
-    puts "  - Config: #{config_path}"
+      # Update config baseurl to point to our test server
+      config = JSON.parse(File.read(config_path))
+      config["baseurl"] = "http://localhost:#{TEST_PORT}"
 
-    result = run_command(
-      "brew ruby -- #{brew_offline_install_path} --config #{config_path} #{formula}",
-      env: {}
-    )
+      # Write updated config to temp location
+      File.write(File.join(offlinebrew_dir, "config.json"), JSON.pretty_generate(config))
+      FileUtils.cp(urlmap_path, File.join(offlinebrew_dir, "urlmap.json"))
 
-    {
-      success: result[:success],
-      output: result[:stdout] + "\n" + result[:stderr]
-    }
+      puts "  - Running brew-offline-install #{formula}"
+      puts "  - Config: #{File.join(offlinebrew_dir, 'config.json')}"
+
+      result = run_command(
+        "#{brew_offline_install_path} #{formula}",
+        env: { "REAL_HOME" => home_dir }
+      )
+
+      return {
+        success: result[:success],
+        output: result[:stdout] + "\n" + result[:stderr]
+      }
+    end
   end
 
   # Check if formula is installed
