@@ -145,11 +145,8 @@ module TestHelper
   # @example
   #   result = run_brew_mirror("/path/to/brew-mirror", ["-f", "jq", "-d", "/tmp"])
   def run_brew_mirror(brew_mirror_path, args, env: {})
-    # Wrapper code that sets ARGV and loads brew-mirror
-    wrapper = <<~RUBY
-      ARGV.replace(#{args.inspect})
-      load #{brew_mirror_path.inspect}
-    RUBY
+    # Wrapper code that sets ARGV and loads brew-mirror (single line to avoid escaping issues)
+    wrapper = "ARGV.replace(#{args.inspect}); load #{brew_mirror_path.inspect}"
 
     # Run via brew ruby -e (has Homebrew libraries, no option parsing)
     run_command("brew ruby -e #{wrapper.inspect}", env: env)
