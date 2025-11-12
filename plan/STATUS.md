@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-11-12
 **Current Phase**: Phase 3 - Enhanced Features 🔄 In Progress
-**Overall Progress**: 12/20 tasks complete (60%)
+**Overall Progress**: 13/20 tasks complete (65%)
 
 ---
 
@@ -441,7 +441,7 @@ Offlinebrew now fully supports both formulae and casks!
 
 ## Phase 3: Enhanced Features
 
-**Status**: 🔄 In Progress (1/3 tasks complete - 33%)
+**Status**: 🔄 In Progress (2/3 tasks complete - 67%)
 **Duration**: 8-10 hours (estimated)
 **Started**: 2025-11-12
 
@@ -507,8 +507,55 @@ Offlinebrew now fully supports both formulae and casks!
 
 ---
 
-### Task 3.2: Fix Git Repository UUID Collision
-**Status**: ⏳ Not Started
+### Task 3.2: Fix Git Repository UUID Collision ✅
+
+**Status**: ✅ Complete
+**Time Spent**: ~1 hour
+**Completed**: 2025-11-12
+**Commit**: 90d1cbc
+
+**What was done**:
+- Replaced SecureRandom.uuid with deterministic SHA256(url@revision) identifiers
+- Created resolve_git_revision() helper function to extract Git commit info
+- Updated sensible_identifier() to accept URL parameter
+- Updated all 3 sensible_identifier() call sites to pass URL
+- Added identifier_cache.json tracking for Git repositories
+- Implemented cache population during mirroring
+- Updated integration test to verify deterministic identifiers
+- Updated test README to document fix
+
+**Key Changes**:
+- `mirror/bin/brew-mirror`:
+  - Added resolve_git_revision() helper (lines 48-66)
+  - Updated sensible_identifier() to use SHA256 (lines 68-86)
+  - Added identifier cache loading (lines 192-199)
+  - Updated 3 call sites to pass URL (lines 261-283)
+  - Added cache tracking for Git repos (lines 336-346)
+  - Write identifier_cache.json at end (line 541)
+
+**Features**:
+- ✅ Deterministic Git repository identifiers
+- ✅ Same repo at same commit → same identifier
+- ✅ identifier_cache.json tracks all Git repos
+- ✅ No duplicate Git repos in mirror
+- ✅ Mirror runs are idempotent
+- ✅ Transparent tracking with JSON cache file
+
+**Deliverables**:
+- ✅ resolve_git_revision() helper function
+- ✅ Updated sensible_identifier() implementation
+- ✅ identifier_cache.json generation
+- ✅ Updated integration test
+- ✅ Updated test documentation
+
+**Acceptance Criteria**:
+- ✅ Git repos use deterministic identifiers
+- ✅ Same repo at same commit gets same ID
+- ✅ identifier_cache.json tracks all Git identifiers
+- ✅ No duplicate Git repos in mirror
+- ✅ Mirror runs are idempotent (can run twice safely)
+
+---
 
 ### Task 3.3: Add Additional Download Strategies
 **Status**: ⏳ Not Started
@@ -569,10 +616,10 @@ Offlinebrew now fully supports both formulae and casks!
 | Phase 0 | 4 | ✅ Complete | 4-6 | ~4 |
 | Phase 1 | 3 | ✅ Complete | 10-12 | ~6 |
 | Phase 2 | 4 | ✅ Complete | 16-24 | ~8 |
-| Phase 3 | 3 | 🔄 In Progress | 8-10 | ~2 |
+| Phase 3 | 3 | 🔄 In Progress | 8-10 | ~3 |
 | Phase 4 | 3 | ⏳ Pending | 8-10 | - |
 | Phase 5 | 3 | ⏳ Pending | 10-14 | - |
-| **Total** | **20** | **60%** | **56-76** | **~20** |
+| **Total** | **20** | **65%** | **56-76** | **~21** |
 
 ---
 
@@ -597,7 +644,8 @@ fc02244 Add macOS-focused testing strategy with formula verification
 5. ✅ ~~Implement Task 1.3: Test Modern Homebrew API Compatibility~~
 6. ✅ ~~Complete Phase 2: Cask Support (Tasks 2.1-2.4)~~
 7. ✅ ~~Implement Task 3.1: Multi-Tap Configuration Support~~
-8. 🎯 **NEXT**: Implement Task 3.2: Fix Git Repository UUID Collision
+8. ✅ ~~Implement Task 3.2: Fix Git Repository UUID Collision~~
+9. 🎯 **NEXT**: Implement Task 3.3: Add Additional Download Strategies
 
 ---
 
