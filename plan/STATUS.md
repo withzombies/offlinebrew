@@ -119,36 +119,56 @@
 ### Task 1.3: Test Modern Homebrew API Compatibility ✅
 
 **Status**: ✅ Complete
-**Time Spent**: ~2 hours
-**Completed**: 2025-11-11
+**Time Spent**: ~3 hours
+**Completed**: 2025-11-12
+**Final Commit**: 9be8f1c
 
 **What was done**:
 - Created `mirror/test/test_api_compatibility.rb` (400+ lines)
+- Researched official Homebrew Ruby API documentation
+- Fixed test to verify Formula.each (what brew-mirror actually uses)
 - Tests all Homebrew APIs used by brew-mirror
 - Added to CI/CD workflow
 - Comprehensive API validation
 
+**API Research** (2025-11-12):
+- Consulted official docs at https://docs.brew.sh/rubydoc/Formula
+- Analyzed brew-mirror source to identify actual API usage
+- Discovered test was checking Formula.all, but brew-mirror uses Formula.each
+- Fixed test to verify correct iteration method (commit 9be8f1c)
+- Created detailed research document: `plan/HOMEBREW_API_RESEARCH.md`
+
 **Tests Include**:
-- Formula iteration (Formula.all vs Formula.each)
+- Formula iteration (Formula.each - what brew-mirror uses on line 125)
 - Formula access and methods
-- Download strategy classes (8 strategies)
-- SoftwareSpec API (url, checksum, resources, patches)
-- Resource API
-- Patch API (external and inline)
-- Tap API
+- Download strategy classes (5 required + 3 optional)
+- SoftwareSpec API (url, checksum, downloader, resources, patches)
+- Resource API (downloader, checksum, url)
+- Patch API (external? method, url)
+- Tap API (core_tap? - critical for brew-mirror line 129)
 - Cask API (for future Phase 2)
 
 **Deliverables**:
 - ✅ `mirror/test/test_api_compatibility.rb`
+- ✅ `plan/HOMEBREW_API_RESEARCH.md` (comprehensive API documentation)
 - ✅ Added to GitHub Actions workflow
 - ✅ Tests run on real Homebrew installation
+- ✅ Fixed to test actual brew-mirror API usage
 
 **Acceptance Criteria**:
 - ✅ Test script exists and is executable
-- ✅ Tests all required APIs
+- ✅ Tests all required APIs (verified against brew-mirror source)
+- ✅ Tests Formula.each (actual iteration method used)
 - ✅ Integrated into CI/CD
 - ✅ Provides clear compatibility report
 - ✅ Documents which APIs are available
+- ✅ Handles HOMEBREW_EVAL_ALL requirement
+
+**Commits**:
+- d127318 - Initial API compatibility test
+- 0ead8a2 - Fix for brew ruby environment
+- f2d45ec - Fix for HOMEBREW_EVAL_ALL requirement
+- 9be8f1c - Fix to test Formula.each (actual brew-mirror usage)
 
 ---
 
