@@ -128,6 +128,33 @@ module TestHelper
     }
   end
 
+  # Run brew-mirror with arguments, avoiding brew ruby's option parser
+  #
+  # Problem: brew-mirror needs Homebrew Ruby classes (Formula[...])
+  # which requires `brew ruby`, but `brew ruby` parses ALL options.
+  #
+  # Solution: Use `brew ruby -e` to run wrapper code that:
+  # 1. Sets ARGV manually (bypassing option parser)
+  # 2. Loads brew-mirror script
+  #
+  # @param brew_mirror_path [String] Path to brew-mirror executable
+  # @param args [Array<String>] Arguments to pass to brew-mirror
+  # @param env [Hash] Environment variables
+  # @return [Hash] Result with :success, :stdout, :stderr
+  #
+  # @example
+  #   result = run_brew_mirror("/path/to/brew-mirror", ["-f", "jq", "-d", "/tmp"])
+  def run_brew_mirror(brew_mirror_path, args, env: {})
+    # Wrapper code that sets ARGV and loads brew-mirror
+    wrapper = <<~RUBY
+      ARGV.replace(#{args.inspect})
+      load #{brew_mirror_path.inspect}
+    RUBY
+
+    # Run via brew ruby -e (has Homebrew libraries, no option parsing)
+    run_command("brew ruby -e #{wrapper.inspect}", env: env)
+  end
+
   # Stub a constant for the duration of a block
   #
   # @param mod [Module] module or class containing constant

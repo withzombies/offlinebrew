@@ -47,38 +47,44 @@ mirror/test/
 
 ### brew-mirror
 - Shebang: `#!/usr/bin/env brew ruby` (broken for direct execution)
-- **CORRECT INVOCATION**: `brew mirror` (Homebrew external command pattern)
-- Supports all options (short and long): `-f`, `--formulae`, `-d`, `--directory`, `-c`, `--config-only`
+- Requires Homebrew Ruby classes (`Formula[...]`) which need `brew ruby`
+- **PROBLEM**: `brew ruby` parses ALL options before passing to script
 
-```bash
-# ✓ CORRECT: Use as Homebrew external command
-brew mirror -f jq -d /tmp/mirror --config-only
+**WORKING SOLUTION** (for tests): Use wrapper via `brew ruby -e`
 
-# ✓ CORRECT: Long options work fine
-brew mirror --formulae jq --directory /tmp/mirror
+```ruby
+# Helper method in test_helper.rb:
+def run_brew_mirror(brew_mirror_path, args, env: {})
+  wrapper = <<~RUBY
+    ARGV.replace(#{args.inspect})  # Set arguments manually
+    load #{brew_mirror_path.inspect}  # Load brew-mirror script
+  RUBY
 
-# Requires brew-mirror executable in PATH
-PATH=/path/to/bin:$PATH brew mirror -f jq -d /tmp
+  run_command("brew ruby -e #{wrapper.inspect}", env: env)
+end
+
+# Usage in tests:
+result = run_brew_mirror("/path/to/brew-mirror", ["-f", "jq", "-d", "/tmp"])
 ```
 
 ### brew-offline-install
 - Shebang: `#!/usr/bin/env ruby` (normal Ruby script)
 - Can execute directly: `./bin/brew-offline-install jq`
-- Loads Homebrew libraries at runtime
+- Loads Homebrew via system commands, not Ruby classes
 
-**Why `brew mirror` Works:**
-- Homebrew external commands follow pattern: `brew-<name>` executable → `brew <name>` command
-- When you run `brew mirror`, Homebrew finds `brew-mirror` in PATH and executes it
-- The shebang `#!/usr/bin/env brew ruby` is used by Homebrew to load libraries
-- Arguments are passed directly to the script WITHOUT brew ruby's option parser interfering
+**Why This Works:**
+1. `brew ruby -e "code"` runs code with Homebrew libraries loaded
+2. Wrapper sets `ARGV` manually BEFORE loading brew-mirror
+3. brew-mirror's `OptionParser.parse!` sees the correct arguments
+4. brew ruby's option parser never sees brew-mirror's options!
 
-**Why Previous Approaches Failed:**
-- `./bin/brew-mirror` (direct): env can't find multi-word command "brew ruby"
-- `brew ruby bin/brew-mirror -f jq`: brew ruby's OptionParser consumed `-f` before script ran
-- **Solution**: Use `brew mirror` which bypasses brew ruby's CLI parser
+**Why ALL Previous Approaches Failed:**
+- `./bin/brew-mirror`: env can't find multi-word command "brew ruby"
+- `brew ruby bin/brew-mirror -f jq`: brew ruby parses `-f` (error!)
+- `brew mirror -f jq`: Homebrew runs via shebang → still goes through brew ruby's parser (error!)
 
-**Key Discovery:**
-The CI example `brew ruby bin/brew-mirror -d /tmp -c || true` has `|| true` because it's **allowed to fail** - not a working pattern!
+**Key Insight:**
+Even `brew mirror` (external command) doesn't work because Homebrew executes the shebang, which invokes brew ruby, which parses options!
 
 ## Testing Strategy by Executable
 
