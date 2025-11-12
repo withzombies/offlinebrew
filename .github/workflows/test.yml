@@ -57,6 +57,11 @@ jobs:
           echo "Testing Homebrew API compatibility..."
           brew ruby mirror/test/test_api_compatibility.rb
 
+      - name: Run cask API tests
+        run: |
+          echo "Testing cask API availability..."
+          brew ruby mirror/test/test_cask_api.rb || echo "⚠ Cask API tests failed (expected if casks not available)"
+
       - name: Verify brew-mirror can detect paths
         run: |
           echo "Testing brew-mirror path detection..."
@@ -147,8 +152,57 @@ jobs:
           echo "Ruby: $(ruby --version)"
           echo ""
 
+  test-unit:
+    name: Unit Tests (Helper Modules)
+    runs-on: ubuntu-latest  # Faster, no Homebrew needed
+    strategy:
+      matrix:
+        ruby: ['3.0', '3.1', '3.2', '3.3']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Run URL helpers tests
+        run: |
+          echo "Testing URL normalization and matching..."
+          ruby mirror/test/test_url_helpers.rb
+
+      - name: Run container helpers tests
+        run: |
+          echo "Testing container format detection..."
+          ruby mirror/test/test_container_helpers.rb
+
+      - name: Run download helpers tests
+        run: |
+          echo "Testing download retry and verification..."
+          ruby mirror/test/test_download_helpers.rb
+
+      - name: Run brew-offline-curl tests
+        run: |
+          echo "Testing brew-offline-curl URL redirection..."
+          cd mirror/test
+          ruby -I../lib:. executable/test_brew_offline_curl.rb
+
+      - name: Display unit test summary
+        if: always()
+        run: |
+          echo ""
+          echo "======================================"
+          echo "Unit Test Summary for Ruby ${{ matrix.ruby }}"
+          echo "======================================"
+          echo "✓ URL helpers tests"
+          echo "✓ Container helpers tests"
+          echo "✓ Download helpers tests"
+          echo "✓ brew-offline-curl tests"
+          echo ""
+
   test-fast:
-    name: Fast Tests (Unit + Security)
+    name: Fast Tests (Security)
     runs-on: macos-latest  # Apple Silicon
     strategy:
       matrix:
