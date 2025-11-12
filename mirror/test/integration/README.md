@@ -209,6 +209,17 @@ class TestNewFeature < Minitest::Test
 end
 ```
 
+## Download Strategy Documentation
+
+For comprehensive information about supported and unsupported download strategies, see:
+- [`mirror/docs/DOWNLOAD_STRATEGIES.md`](../../docs/DOWNLOAD_STRATEGIES.md)
+- Strategy discovery script: `mirror/test/discover_strategies.rb`
+
+**Quick Reference**:
+- ✅ Supported: CurlDownloadStrategy, GitDownloadStrategy, GitHubGitDownloadStrategy, Apache mirrors
+- ❌ Unsupported: SVN, Mercurial, CVS, Bazaar, Fossil (require external tools)
+- 📊 Coverage: >99% of Homebrew formulae
+
 ## Future Test Additions
 
 Potential areas for expansion:
@@ -219,3 +230,4 @@ Potential areas for expansion:
 - [ ] Manifest generation (Phase 4)
 - [ ] Performance benchmarks
 - [ ] Stress tests (hundreds of formulae)
+- [ ] Bottle (binary package) support testing

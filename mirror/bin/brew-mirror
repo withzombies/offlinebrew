@@ -33,17 +33,32 @@ end
 # A `url` is the resource's actual asset.
 MirrorResource = Struct.new(:fetchable, :identifier, :downloader, :url)
 
-# These are the simplest to support, and cover 99.9% of formulae.
-# Notable exception: clang-format, which is in a SVN repo.
+# Supported download strategies for offline mirroring
+# These strategies cover >99% of Homebrew formulae.
+# The list is built defensively to handle different Homebrew versions.
 BREW_OFFLINE_DOWNLOAD_STRATEGIES = [
+  # HTTP/HTTPS download strategies (most common)
   CurlDownloadStrategy,
   CurlApacheMirrorDownloadStrategy,
   NoUnzipCurlDownloadStrategy,
-  # NOTE: These don't have a stable checksum, so we fabricate an identifier for them.
-  # See `sensible_identifier`.
+
+  # Git-based strategies (deterministic identifiers via Task 3.2)
   GitDownloadStrategy,
   GitHubGitDownloadStrategy,
-].freeze
+
+  # Additional strategies that may exist in newer Homebrew versions
+  # Using defined?() to safely check if they exist
+  (defined?(CurlBottleDownloadStrategy) ? CurlBottleDownloadStrategy : nil),
+  (defined?(LocalBottleDownloadStrategy) ? LocalBottleDownloadStrategy : nil),
+].compact.freeze
+
+# Unsupported strategies (require external tools):
+# - SubversionDownloadStrategy (requires svn binary)
+# - MercurialDownloadStrategy (requires hg binary)
+# - CVSDownloadStrategy (requires cvs binary)
+# - BazaarDownloadStrategy (requires bzr binary)
+# - FossilDownloadStrategy (requires fossil binary)
+# See mirror/docs/DOWNLOAD_STRATEGIES.md for details
 
 # Resolve the actual Git commit for a repository.
 # This ensures we get the real commit hash, not just "master" or "HEAD".
