@@ -41,14 +41,54 @@ if ! ruby -e "require 'webrick'" 2>/dev/null; then
     echo ""
 fi
 
-# Run integration tests
-echo "Running integration tests..."
-echo "This will take several minutes (downloading bottles, running installs)"
-echo ""
+# Parse arguments
+TEST_SUITE="${1:-all}"
 
 cd "$(dirname "$0")"
 
-ruby -I../lib:. integration/test_full_workflow.rb -v
+case "$TEST_SUITE" in
+  full)
+    echo "Running full workflow integration tests..."
+    echo ""
+    ruby -I../lib:. integration/test_full_workflow.rb -v
+    ;;
+
+  url)
+    echo "Running URL shim integration tests..."
+    echo ""
+    ruby -I../lib:. integration/test_url_shims.rb -v
+    ;;
+
+  error)
+    echo "Running error handling integration tests..."
+    echo ""
+    ruby -I../lib:. integration/test_error_handling.rb -v
+    ;;
+
+  all|*)
+    echo "Running all integration tests..."
+    echo "This will take several minutes (downloading bottles, running installs)"
+    echo ""
+
+    echo ""
+    echo "=============================================="
+    echo "[1/3] Full Workflow Tests"
+    echo "=============================================="
+    ruby -I../lib:. integration/test_full_workflow.rb -v
+
+    echo ""
+    echo "=============================================="
+    echo "[2/3] URL Shim Tests"
+    echo "=============================================="
+    ruby -I../lib:. integration/test_url_shims.rb -v
+
+    echo ""
+    echo "=============================================="
+    echo "[3/3] Error Handling Tests"
+    echo "=============================================="
+    ruby -I../lib:. integration/test_error_handling.rb -v
+    ;;
+esac
 
 echo ""
 echo "=============================================="
