@@ -70,7 +70,11 @@ class MirrorVerifier
     puts "Mirror: #{mirror_dir}"
     puts ""
 
-    return false unless errors.empty? # Can't continue if files missing
+    # Can't continue if essential files missing, but show what's wrong
+    if !errors.empty?
+      print_summary
+      return false
+    end
 
     verify_config
     verify_files
