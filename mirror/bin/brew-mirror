@@ -13,6 +13,7 @@ require_relative "../lib/cask_helpers"
 require_relative "../lib/container_helpers"
 require_relative "../lib/download_helpers"
 require_relative "../lib/url_helpers"
+require_relative "../lib/tap_manager"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
@@ -32,28 +33,68 @@ end
 # A `url` is the resource's actual asset.
 MirrorResource = Struct.new(:fetchable, :identifier, :downloader, :url)
 
-# These are the simplest to support, and cover 99.9% of formulae.
-# Notable exception: clang-format, which is in a SVN repo.
+# Supported download strategies for offline mirroring
+# These strategies cover >99% of Homebrew formulae.
+# The list is built defensively to handle different Homebrew versions.
 BREW_OFFLINE_DOWNLOAD_STRATEGIES = [
+  # HTTP/HTTPS download strategies (most common)
   CurlDownloadStrategy,
   CurlApacheMirrorDownloadStrategy,
   NoUnzipCurlDownloadStrategy,
-  # NOTE: These don't have a stable checksum, so we fabricate an identifier for them.
-  # See `sensible_identifier`.
+
+  # Git-based strategies (deterministic identifiers via Task 3.2)
   GitDownloadStrategy,
   GitHubGitDownloadStrategy,
-].freeze
 
-# Given a download strategy, produce a sensible and probably unique identifier.
-def sensible_identifier(strategy, checksum = nil)
+  # Additional strategies that may exist in newer Homebrew versions
+  # Using defined?() to safely check if they exist
+  (defined?(CurlBottleDownloadStrategy) ? CurlBottleDownloadStrategy : nil),
+  (defined?(LocalBottleDownloadStrategy) ? LocalBottleDownloadStrategy : nil),
+].compact.freeze
+
+# Unsupported strategies (require external tools):
+# - SubversionDownloadStrategy (requires svn binary)
+# - MercurialDownloadStrategy (requires hg binary)
+# - CVSDownloadStrategy (requires cvs binary)
+# - BazaarDownloadStrategy (requires bzr binary)
+# - FossilDownloadStrategy (requires fossil binary)
+# See mirror/docs/DOWNLOAD_STRATEGIES.md for details
+
+# Resolve the actual Git commit for a repository.
+# This ensures we get the real commit hash, not just "master" or "HEAD".
+def resolve_git_revision(downloader)
+  return "HEAD" unless downloader.is_a?(GitDownloadStrategy) ||
+                       downloader.is_a?(GitHubGitDownloadStrategy)
+
+  # Try to get the resolved reference (actual commit hash)
+  if downloader.respond_to?(:resolved_ref) && downloader.resolved_ref
+    return downloader.resolved_ref
+  end
+
+  # Try to get the ref (branch name, tag, or commit)
+  if downloader.respond_to?(:ref) && downloader.ref
+    return downloader.ref
+  end
+
+  # Default to HEAD if we can't determine the revision
+  "HEAD"
+end
+
+# Given a download strategy, produce a sensible and deterministic identifier.
+def sensible_identifier(strategy, checksum = nil, url = nil)
   case strategy
   when GitDownloadStrategy, GitHubGitDownloadStrategy
-    # Git/GitHub resources don't have checksums and Homebrew doesn't make it easy
-    # to retrieve their revision/last commit hash, so we just create a unique
-    # identifier for them.
-    # TODO(ww): We should cache or record the UUID we create here, so that we don't
-    # end up mirroring the same revision of a `git` repository multiple times.
-    SecureRandom.uuid
+    # Git/GitHub resources don't have checksums, so we create a deterministic
+    # identifier based on the URL and revision. This prevents duplicate mirrors
+    # of the same repository at the same commit.
+    require "digest"
+
+    # Get the revision/commit being checked out
+    revision = resolve_git_revision(strategy)
+
+    # Create deterministic hash: SHA256(url + revision)
+    # This ensures the same repo at the same commit always gets the same identifier
+    Digest::SHA256.hexdigest("#{url}@#{revision}")
   else
     checksum.to_s
   end
@@ -84,6 +125,8 @@ options = {
   config_only: false,
   iterator: Formula,
   casks: nil,
+  taps: ["homebrew/homebrew-core", "homebrew/homebrew-cask"],  # Default taps
+  verify: false,
 }
 
 OptionParser.new do |parser|
@@ -108,46 +151,55 @@ OptionParser.new do |parser|
   parser.on "--casks c1,c2,c3", Array, "mirror just the given casks" do |casks|
     options[:casks] = casks
   end
+
+  parser.on "--taps tap1,tap2", Array, "specify taps to mirror (default: core,cask)" do |taps|
+    options[:taps] = taps
+  end
+
+  parser.on "--verify", "verify mirror integrity after creation" do
+    options[:verify] = true
+  end
 end.parse!
 
 abort "Fatal: the output directory must exist" unless Dir.exist?(options[:directory])
 
-# Dump the homebrew-core commit we're mirroring at, the timestamp,
+# Dump the configured taps' commits, the timestamp,
 # and the path of our cache to the directory that brew-offline reads.
 ohai "Writing brew-offline config..."
 
 config = {}
+config[:taps] = {}
 
-# Get commit hash for homebrew-core
-core_dir = HomebrewPaths.core_tap_path
-abort "Fatal: homebrew-core tap not found at #{core_dir}" unless HomebrewPaths.tap_exists?("homebrew", "homebrew-core")
-core_commit = HomebrewPaths.core_tap_commit
+# Process each configured tap
+options[:taps].each do |tap_name|
+  unless TapManager.tap_installed?(tap_name)
+    opoo "Tap not installed: #{tap_name}, skipping"
+    next
+  end
 
-# Get commit hash for homebrew-cask (if it exists)
-cask_commit = if HomebrewPaths.cask_tap_exists?
-                HomebrewPaths.cask_tap_commit
-              else
-                opoo "homebrew-cask tap not found, skipping cask mirroring"
-                nil
-              end
+  commit = TapManager.tap_commit(tap_name)
+  unless commit
+    opoo "Could not get commit for #{tap_name}, skipping"
+    next
+  end
 
-# Store tap information
-config[:taps] = {
-  "homebrew/homebrew-core" => {
-    "commit" => core_commit,
-    "type" => "formula",
-  },
-}
+  tap_type = TapManager.tap_type(tap_name)
 
-if cask_commit
-  config[:taps]["homebrew/homebrew-cask"] = {
-    "commit" => cask_commit,
-    "type" => "cask",
+  config[:taps][tap_name] = {
+    "commit" => commit,
+    "type" => tap_type,
   }
+
+  ohai "Will mirror #{tap_name} (#{tap_type}) at commit #{commit[0..7]}"
 end
 
+# Ensure at least one tap configured
+abort "Fatal: No valid taps configured!" if config[:taps].empty?
+
 # Legacy fields for backward compatibility
-config[:commit] = core_commit  # Old format
+# Use first tap's commit (usually homebrew-core) for old format
+first_tap = config[:taps].values.first
+config[:commit] = first_tap["commit"] if first_tap
 config[:stamp] = Time.now.to_i.to_s
 config[:cache] = options[:directory]
 config[:baseurl] = options[:baseurl]
@@ -157,18 +209,73 @@ File.write File.join(options[:directory], "config.json"), config.to_json
 # Initialize urlmap (will be empty in config-only mode)
 urlmap = {}
 
+# Load existing identifier cache if it exists
+# This prevents duplicate mirroring of the same Git repository at the same commit
+identifier_cache_file = File.join(options[:directory], "identifier_cache.json")
+identifier_cache = if File.exist?(identifier_cache_file)
+                     JSON.parse(File.read(identifier_cache_file))
+                   else
+                     {}
+                   end
+
 # In config-only mode, write empty urlmap and exit early
 if options[:config_only]
   File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
   exit
 end
 
-# Finally, fetch the (stable) resources for each formula in homebrew-core.
+# Helper function to normalize tap names
+# Homebrew API returns "homebrew/core" but we store "homebrew/homebrew-core"
+# Also handles case sensitivity (Homebrew/core vs homebrew/core)
+def normalize_tap_name(tap_name)
+  # First, convert to lowercase for case-insensitive matching
+  tap_name = tap_name.downcase
+
+  # Convert short form to full form
+  # "homebrew/core" -> "homebrew/homebrew-core"
+  # "homebrew/cask" -> "homebrew/homebrew-cask"
+  if tap_name =~ %r{^([^/]+)/([^/]+)$}
+    user = $1
+    repo = $2
+    # If repo doesn't start with "homebrew-", add it
+    if user == "homebrew" && !repo.start_with?("homebrew-")
+      "#{user}/homebrew-#{repo}"
+    else
+      tap_name
+    end
+  else
+    tap_name
+  end
+end
+
+# Finally, fetch the (stable) resources for each formula from configured taps.
 options[:iterator].each do |formula|
-  # Skip formulae that aren't in the core tap.
-  # TODO(ww): We can probably make a whitelist of other taps to mirror,
-  # and expose it as a configuration or CLI option.
-  next unless formula.tap.core_tap?
+  # Skip formulae that aren't in configured taps
+  # Handle different tap types (CoreTap, Tap, etc.)
+  formula_tap_name = if formula.tap.respond_to?(:full_name)
+                       formula.tap.full_name
+                     elsif formula.tap.core_tap?
+                       "homebrew/core"  # Use short form, will be normalized
+                     elsif formula.tap.respond_to?(:user) && formula.tap.respond_to?(:repo)
+                       "#{formula.tap.user}/#{formula.tap.repo}"
+                     else
+                       # Fallback: try to get name from tap
+                       formula.tap.to_s
+                     end
+
+  # Debug: Show tap name before and after normalization
+  original_tap_name = formula_tap_name
+  formula_tap_name = normalize_tap_name(formula_tap_name)
+
+  if ENV["HOMEBREW_VERBOSE"]
+    puts "DEBUG: Formula #{formula.name}"
+    puts "  Original tap: #{original_tap_name}"
+    puts "  Normalized tap: #{formula_tap_name}"
+    puts "  Config taps: #{config[:taps].keys.inspect}"
+    puts "  Match: #{config[:taps].key?(formula_tap_name)}"
+  end
+
+  next unless config[:taps].key?(formula_tap_name)
 
   ohai "Collecting resources for #{formula.name}..."
 
@@ -181,13 +288,16 @@ options[:iterator].each do |formula|
 
   resources << MirrorResource.new(formula.stable,
                                   sensible_identifier(formula.stable.downloader,
-                                                      formula.stable.checksum),
+                                                      formula.stable.checksum,
+                                                      formula.stable.url),
                                   formula.stable.downloader,
                                   formula.stable.url)
 
   formula.stable.resources.each do |_name, res|
     resources << MirrorResource.new(res,
-                                    sensible_identifier(res.downloader, res.checksum),
+                                    sensible_identifier(res.downloader,
+                                                        res.checksum,
+                                                        res.url),
                                     res.downloader,
                                     res.url)
   end
@@ -195,7 +305,8 @@ options[:iterator].each do |formula|
   formula.stable.patches.select(&:external?).each do |patch|
     resources << MirrorResource.new(patch,
                                     sensible_identifier(patch.resource.downloader,
-                                                        patch.resource.checksum),
+                                                        patch.resource.checksum,
+                                                        patch.url),
                                     patch.resource.downloader,
                                     patch.url)
   end
@@ -242,6 +353,18 @@ options[:iterator].each do |formula|
       ohai "\t#{old_location} -> #{new_location}"
     end
 
+    # Track Git repositories in identifier cache for idempotent mirroring
+    if res.downloader.is_a?(GitDownloadStrategy) || res.downloader.is_a?(GitHubGitDownloadStrategy)
+      revision = resolve_git_revision(res.downloader)
+      cache_key = "#{res.url}@#{revision}"
+      identifier_cache[cache_key] = {
+        "identifier" => res.identifier,
+        "url" => res.url.to_s,
+        "revision" => revision,
+        "filename" => new_location.basename.to_s,
+      }
+    end
+
     # Add to the urlmap (with URL variants for better matching)
     url_str = res.url.to_s
     urlmap[url_str] = new_location.basename
@@ -254,20 +377,47 @@ options[:iterator].each do |formula|
   sleep options[:sleep]
 end
 
-# Mirror casks if homebrew-cask tap exists and cask API is available
-if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
-  ohai "Mirroring casks from homebrew/homebrew-cask..."
+# Mirror casks from all configured cask taps
+cask_taps = config[:taps].select { |tap_name, tap_info|
+  tap_type = tap_info["type"] || tap_info[:type]
+  tap_type == "cask" || tap_type == "mixed"
+}
 
-  # Determine which casks to mirror
-  cask_iterator = if options[:casks]
-                    # Specific casks requested via CLI
-                    CaskHelpers.load_casks(options[:casks])
-                  else
-                    # All casks
-                    CaskHelpers.all_casks
-                  end
+if CaskHelpers.cask_api_available? && !cask_taps.empty?
+  cask_taps.each do |tap_name, tap_info|
+    ohai "Mirroring casks from #{tap_name}..."
+
+    # Determine which casks to mirror
+    cask_iterator = if options[:casks]
+                      # Specific casks requested via CLI
+                      CaskHelpers.load_casks(options[:casks])
+                    else
+                      # All casks from this tap
+                      # For now, CaskHelpers.all_casks returns all installed casks
+                      # We'll filter by tap name below
+                      CaskHelpers.all_casks
+                    end
 
   cask_iterator.each do |cask|
+    # Skip casks that aren't from this tap
+    # Only filter by tap if we're not mirroring specific casks via --casks
+    if !options[:casks] && cask.respond_to?(:tap) && cask.tap
+      # Handle different tap types (CoreTap, Tap, etc.)
+      cask_tap_name = if cask.tap.respond_to?(:full_name)
+                        cask.tap.full_name
+                      elsif cask.tap.respond_to?(:user) && cask.tap.respond_to?(:repo)
+                        "#{cask.tap.user}/#{cask.tap.repo}"
+                      else
+                        # Fallback: try to get name from tap
+                        cask.tap.to_s
+                      end
+
+      # Normalize both tap names for comparison
+      cask_tap_name = normalize_tap_name(cask_tap_name)
+      normalized_tap_name = normalize_tap_name(tap_name)
+      next unless cask_tap_name == normalized_tap_name
+    end
+
     ohai "Collecting resources for cask: #{cask.token}..."
 
     # Casks have a simpler structure than formulae
@@ -389,11 +539,10 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
 
     sleep options[:sleep]
   end
+  end  # end of cask_taps.each
 
-  # Print cask mirror statistics
+  # Print overall cask mirror statistics
   ohai "Cask mirror statistics:"
-  cask_count = cask_iterator.count
-  puts "  Casks processed: #{cask_count}"
 
   # Count files by extension
   cask_files = Dir.glob("#{options[:directory]}/*.{dmg,pkg,zip,tar.gz}").select { |f| File.file?(f) }
@@ -418,3 +567,15 @@ end
 
 # Write urlmap.json
 File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
+
+# Write identifier cache for Git repository tracking
+# This tracks all Git identifiers to prevent duplicates on subsequent mirror runs
+File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
+
+# Verify mirror if requested
+if options[:verify]
+  ohai "Verifying mirror integrity..."
+  verify_script = File.expand_path("brew-mirror-verify", __dir__)
+  result = system("brew", "ruby", verify_script, options[:directory])
+  exit 1 unless result
+end

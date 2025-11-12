@@ -114,7 +114,8 @@ ENV["HOMEBREW_VERBOSE"] = "1"
 
 # Set REAL_HOME so that our shim scripts can find the config even when
 # Homebrew runs them with a fake $HOME (which happens during sandbox builds).
-ENV["REAL_HOME"] = Dir.home
+# Only set if not already set (to allow tests to override).
+ENV["REAL_HOME"] ||= Dir.home
 
 # We want to minimize the number of non-package network requests we do,
 # both for performance and stability reasons.
@@ -188,7 +189,7 @@ begin
   # The remote config doesn't get to clobber our baseurl.
   config[:baseurl] = baseurl
 rescue StandardError => e
-  abort "#{e}: #{e.message} while fetching remote config and urlmap!"
+  abort "#{e}: #{e.message} while fetching remote configuration and urlmap!"
 end
 
 # Handle new tap-based config format with backward compatibility

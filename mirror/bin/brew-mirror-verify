@@ -1,0 +1,328 @@
+#!/usr/bin/env brew ruby
+# frozen_string_literal: true
+
+# brew-mirror-verify: Verify the integrity and completeness of an offlinebrew mirror
+#
+# Usage:
+#   brew ruby brew-mirror-verify <mirror-directory>
+#
+# Options:
+#   --checksums    Verify file checksums (slow)
+#   --verbose      Show detailed output
+#
+# Exit codes:
+#   0 - Mirror is valid
+#   1 - Mirror has errors
+#   2 - Usage error
+
+require "json"
+require "digest"
+require "pathname"
+require_relative "../lib/homebrew_paths"
+require_relative "../lib/safe_shell"
+
+# Verify mirror integrity and completeness
+class MirrorVerifier
+  attr_reader :mirror_dir, :config, :urlmap, :identifier_cache, :errors, :warnings, :stats
+
+  def initialize(mirror_dir, options = {})
+    @mirror_dir = Pathname.new(mirror_dir)
+    @options = options
+    @errors = []
+    @warnings = []
+    @stats = {}
+
+    load_files
+  end
+
+  def load_files
+    # Load config.json
+    config_file = mirror_dir / "config.json"
+    if config_file.exist?
+      @config = JSON.parse(config_file.read)
+    else
+      @errors << "config.json not found"
+      @config = {}
+    end
+
+    # Load urlmap.json
+    urlmap_file = mirror_dir / "urlmap.json"
+    if urlmap_file.exist?
+      @urlmap = JSON.parse(urlmap_file.read)
+    else
+      @errors << "urlmap.json not found"
+      @urlmap = {}
+    end
+
+    # Load identifier_cache.json (optional for Task 3.2)
+    cache_file = mirror_dir / "identifier_cache.json"
+    if cache_file.exist?
+      @identifier_cache = JSON.parse(cache_file.read)
+    else
+      @identifier_cache = {}
+    end
+  end
+
+  def verify!
+    puts "=" * 70
+    puts "Offlinebrew Mirror Verification"
+    puts "=" * 70
+    puts "Mirror: #{mirror_dir}"
+    puts ""
+
+    return false unless errors.empty? # Can't continue if files missing
+
+    verify_config
+    verify_files
+    verify_git_cache
+    verify_checksums if @options[:checksums]
+
+    print_summary
+    errors.empty?
+  end
+
+  def verify_config
+    puts "[1/4] Verifying configuration..."
+    puts ""
+
+    # Check config format
+    if config["taps"]
+      puts "  ✓ Config format: Multi-tap (current)"
+      config["taps"].each do |tap_name, tap_info|
+        commit = tap_info["commit"] || tap_info[:commit]
+        tap_type = tap_info["type"] || tap_info[:type]
+        puts "    - #{tap_name}: #{commit[0..7]} (#{tap_type})"
+      end
+      @stats[:taps] = config["taps"].keys.count
+    elsif config["commit"]
+      @warnings << "Using legacy config format (single tap)"
+      puts "  ⚠ Config format: Legacy (single tap)"
+      puts "    - Commit: #{config["commit"][0..7]}"
+      @stats[:taps] = 1
+    else
+      @errors << "Invalid config: no taps or commit field"
+      puts "  ✗ Invalid config format"
+      return
+    end
+
+    # Check required fields
+    if config["stamp"]
+      timestamp = Time.at(config["stamp"].to_i)
+      puts "  ✓ Mirror created: #{timestamp.strftime("%Y-%m-%d %H:%M:%S")}"
+      @stats[:created_at] = timestamp
+    else
+      @warnings << "Missing timestamp in config"
+    end
+
+    if config["baseurl"]
+      puts "  ✓ Base URL: #{config["baseurl"]}"
+    else
+      @warnings << "Missing baseurl in config"
+    end
+
+    puts ""
+  end
+
+  def verify_files
+    puts "[2/4] Verifying files..."
+    puts ""
+
+    # Check for missing files
+    missing_files = []
+    urlmap.each do |url, filename|
+      filepath = mirror_dir / filename
+      unless filepath.exist?
+        missing_files << filename
+      end
+    end
+
+    if missing_files.any?
+      @errors << "#{missing_files.count} files missing from mirror"
+      puts "  ✗ Missing files: #{missing_files.count}"
+      if @options[:verbose]
+        missing_files.each { |f| puts "    - #{f}" }
+      else
+        missing_files.first(5).each { |f| puts "    - #{f}" }
+        puts "    ... and #{missing_files.count - 5} more" if missing_files.count > 5
+      end
+    else
+      puts "  ✓ All #{urlmap.count} URLs mapped to files"
+      @stats[:urls] = urlmap.count
+    end
+
+    # Check for orphaned files (in mirror but not in urlmap)
+    mirror_files = Dir.glob(mirror_dir / "*").map { |f| File.basename(f) }
+    expected_files = urlmap.values.uniq + ["config.json", "urlmap.json", "identifier_cache.json"]
+    orphaned = mirror_files - expected_files
+
+    if orphaned.any?
+      @warnings << "#{orphaned.count} orphaned files found"
+      puts "  ⚠ Orphaned files: #{orphaned.count}"
+      if @options[:verbose]
+        orphaned.each { |f| puts "    - #{f}" }
+      else
+        orphaned.first(5).each { |f| puts "    - #{f}" }
+        puts "    ... and #{orphaned.count - 5} more" if orphaned.count > 5
+      end
+      puts "    Tip: Orphaned files may be from previous mirror runs"
+    end
+
+    # Count actual files
+    actual_files = mirror_files - ["config.json", "urlmap.json", "identifier_cache.json"]
+    puts "  ✓ Actual files: #{actual_files.count}"
+    @stats[:files] = actual_files.count
+
+    # Calculate total size
+    result = SafeShell.execute("du", "-sh", mirror_dir.to_s)
+    if result[:success]
+      total_size = result[:stdout].split.first
+      puts "  ✓ Total size: #{total_size}"
+      @stats[:size] = total_size
+    end
+
+    puts ""
+  end
+
+  def verify_git_cache
+    puts "[3/4] Verifying Git repository cache..."
+    puts ""
+
+    if identifier_cache.empty?
+      puts "  ℹ No Git repositories in cache"
+      puts "    (Cache is populated when mirroring Git-based formulae)"
+      @stats[:git_repos] = 0
+    else
+      puts "  ✓ Git repositories cached: #{identifier_cache.count}"
+      @stats[:git_repos] = identifier_cache.count
+
+      if @options[:verbose]
+        identifier_cache.each do |cache_key, info|
+          puts "    - #{cache_key}"
+          puts "      ID: #{info["identifier"]}"
+          puts "      File: #{info["filename"]}"
+        end
+      else
+        # Show first 3
+        identifier_cache.first(3).each do |cache_key, info|
+          puts "    - #{cache_key}: #{info["filename"]}"
+        end
+        if identifier_cache.count > 3
+          puts "    ... and #{identifier_cache.count - 3} more"
+        end
+      end
+
+      # Verify Git files exist
+      missing_git = []
+      identifier_cache.each do |cache_key, info|
+        filename = info["filename"]
+        filepath = mirror_dir / filename
+        missing_git << filename unless filepath.exist?
+      end
+
+      if missing_git.any?
+        @errors << "#{missing_git.count} cached Git repositories missing"
+        puts "  ✗ Missing Git repos: #{missing_git.count}"
+        missing_git.first(5).each { |f| puts "    - #{f}" }
+      end
+    end
+
+    puts ""
+  end
+
+  def verify_checksums
+    puts "[4/4] Verifying checksums..."
+    puts ""
+    puts "  ⚠ Checksum verification not yet implemented"
+    puts "    This would verify SHA256 checksums for downloaded files"
+    puts "    against the values in formula definitions"
+    @warnings << "Checksum verification skipped (not implemented)"
+    puts ""
+  end
+
+  def print_summary
+    puts "=" * 70
+    puts "Verification Summary"
+    puts "=" * 70
+    puts ""
+
+    # Print stats
+    if stats.any?
+      puts "Statistics:"
+      puts "  Taps: #{stats[:taps] || 0}"
+      puts "  URLs: #{stats[:urls] || 0}"
+      puts "  Files: #{stats[:files] || 0}"
+      puts "  Git repos: #{stats[:git_repos] || 0}"
+      puts "  Size: #{stats[:size] || "unknown"}"
+      puts "  Created: #{stats[:created_at]&.strftime("%Y-%m-%d %H:%M:%S") || "unknown"}"
+      puts ""
+    end
+
+    # Print result
+    if errors.empty? && warnings.empty?
+      puts "✅ Mirror is valid and complete!"
+      puts ""
+      puts "This mirror is ready to use with brew-offline-install."
+    elsif errors.empty?
+      puts "⚠️  Mirror is valid but has warnings:"
+      warnings.each { |w| puts "  - #{w}" }
+      puts ""
+      puts "This mirror should work, but consider reviewing the warnings."
+    else
+      puts "❌ Mirror has errors:"
+      errors.each { |e| puts "  - #{e}" }
+      puts ""
+
+      if warnings.any?
+        puts "Warnings:"
+        warnings.each { |w| puts "  - #{w}" }
+        puts ""
+      end
+
+      puts "This mirror may not work correctly. Fix errors before using."
+    end
+
+    puts "=" * 70
+  end
+end
+
+# Parse command line
+if ARGV.include?("--help") || ARGV.include?("-h")
+  puts "Usage: brew ruby brew-mirror-verify [OPTIONS] <mirror-directory>"
+  puts ""
+  puts "Verify the integrity and completeness of an offlinebrew mirror."
+  puts ""
+  puts "Options:"
+  puts "  --checksums    Verify file checksums (slow, not yet implemented)"
+  puts "  --verbose      Show detailed output"
+  puts "  -h, --help     Show this help"
+  puts ""
+  puts "Exit codes:"
+  puts "  0 - Mirror is valid"
+  puts "  1 - Mirror has errors"
+  puts "  2 - Usage error"
+  exit 0
+end
+
+options = {
+  checksums: ARGV.include?("--checksums"),
+  verbose: ARGV.include?("--verbose"),
+}
+
+mirror_dir = ARGV.reject { |arg| arg.start_with?("--") }.first
+
+unless mirror_dir
+  warn "Error: No mirror directory specified"
+  warn "Usage: brew ruby brew-mirror-verify <mirror-directory>"
+  exit 2
+end
+
+unless Dir.exist?(mirror_dir)
+  warn "Error: Directory not found: #{mirror_dir}"
+  exit 2
+end
+
+# Run verification
+verifier = MirrorVerifier.new(mirror_dir, options)
+success = verifier.verify!
+
+exit(success ? 0 : 1)

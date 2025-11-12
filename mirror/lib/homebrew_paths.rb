@@ -85,6 +85,17 @@ module HomebrewPaths
     File.join(homebrew_repository, "Library")
   end
 
+  # Get the path to the Taps directory
+  #
+  # @return [String] Path to Taps directory
+  #
+  # @example Get taps directory
+  #   HomebrewPaths.taps_path
+  #   # => "/opt/homebrew/Homebrew/Library/Taps"
+  def self.taps_path
+    File.join(homebrew_library, "Taps")
+  end
+
   # Get the path to a specific tap
   #
   # @param user [String] Tap user (e.g., "homebrew")
@@ -95,7 +106,7 @@ module HomebrewPaths
   #   HomebrewPaths.tap_path("homebrew", "homebrew-cask")
   #   # => "/opt/homebrew/Homebrew/Library/Taps/homebrew/homebrew-cask"
   def self.tap_path(user, repo)
-    File.join(homebrew_library, "Taps", user, repo)
+    File.join(taps_path, user, repo)
   end
 
   # Convenience method for homebrew-core tap
