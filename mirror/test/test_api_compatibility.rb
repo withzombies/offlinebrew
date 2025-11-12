@@ -8,6 +8,7 @@
 # Homebrew version by checking that all required APIs still exist.
 
 require_relative "../lib/homebrew_paths"
+require_relative "../lib/safe_shell"
 
 puts "Homebrew API Compatibility Test"
 puts "=" * 70
@@ -18,7 +19,14 @@ abort "ERROR: Must run with `brew ruby`!" unless Object.const_defined?(:Homebrew
 puts "✓ Running under brew ruby"
 
 # Test 2: Check Homebrew version
-brew_version = `brew --version`.lines.first.chomp
+# We can't call `brew --version` directly in brew ruby context, so use HOMEBREW_VERSION constant
+brew_version = if defined?(Homebrew::HOMEBREW_VERSION)
+  "Homebrew #{Homebrew::HOMEBREW_VERSION}"
+elsif defined?(HOMEBREW_VERSION)
+  "Homebrew #{HOMEBREW_VERSION}"
+else
+  "Homebrew (version unknown)"
+end
 puts "✓ Homebrew version: #{brew_version}"
 puts ""
 
