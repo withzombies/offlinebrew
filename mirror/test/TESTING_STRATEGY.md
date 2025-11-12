@@ -389,39 +389,97 @@ end
 
 ## Running Tests
 
-### Run All Tests
+### Run All Unit Tests
 ```bash
 cd mirror/test
-ruby -I../lib:. -e 'Dir.glob("**/*test_*.rb").each {|f| require "./#{f}"}'
+
+# Run helper module tests
+ruby test_url_helpers.rb
+ruby test_container_helpers.rb
+ruby test_download_helpers.rb
+
+# Run executable tests
+ruby -I../lib:. executable/test_brew_offline_curl.rb
 ```
 
 ### Run Specific Test File
 ```bash
-ruby -I../lib:. test/executable/test_brew_mirror.rb
+ruby -I../lib:. executable/test_brew_offline_curl.rb
 ```
 
 ### Run Specific Test
 ```bash
-ruby -I../lib:. test/executable/test_brew_mirror.rb -n test_generates_config
+ruby -I../lib:. executable/test_brew_offline_curl.rb -n test_url_exact_match_redirects_to_mirror
 ```
 
 ### Run with Verbose Output
 ```bash
-ruby -I../lib:. test/executable/test_brew_mirror.rb -v
+ruby -I../lib:. executable/test_brew_offline_curl.rb -v
 ```
+
+### Run Integration Tests
+
+**Requirements:** Homebrew installation, network access, ~5-10 minutes
+
+```bash
+cd mirror/test
+bash run_integration_tests.sh
+```
+
+**What integration tests do:**
+1. Mirror a real formula (jq) with brew-mirror
+2. Start HTTP server to serve the mirror
+3. Install formula using brew-offline-install
+4. Verify the formula actually works (runs `jq --version`)
+5. Test config validation
+6. Test dry-run mode
+
+**Integration tests verify:**
+- Complete end-to-end workflow
+- brew-mirror correctly mirrors bottles
+- config.json and urlmap.json generated properly
+- brew-offline-install resets taps correctly
+- Offline installation actually works
+- Formula runs after offline install
 
 ## CI/CD Integration
 
-Add to `.github/workflows/test.yml`:
+### Current CI/CD Configuration
 
+The `.github/workflows/test.yml` runs three test jobs:
+
+**1. test-unit** (Ubuntu, Ruby 3.0-3.3)
 ```yaml
-- name: Run executable tests
+- name: Run URL helpers tests
+  run: ruby mirror/test/test_url_helpers.rb
+
+- name: Run container helpers tests
+  run: ruby mirror/test/test_container_helpers.rb
+
+- name: Run download helpers tests
+  run: ruby mirror/test/test_download_helpers.rb
+
+- name: Run brew-offline-curl tests
   run: |
     cd mirror/test
-    ruby -I../lib:. executable/test_brew_mirror.rb
-    ruby -I../lib:. executable/test_brew_offline_install.rb
     ruby -I../lib:. executable/test_brew_offline_curl.rb
 ```
+
+**2. test-macos-features** (macOS, Ruby 3.0-3.2)
+- Security tests
+- Path detection tests
+- Homebrew API compatibility tests
+- Cask API tests
+
+**3. test-integration** (macOS, Ruby 3.2)
+```yaml
+- name: Run integration tests
+  run: |
+    cd mirror/test
+    bash run_integration_tests.sh
+```
+
+**Total:** ~200+ test assertions per workflow run across all jobs
 
 ## Acknowledgment: Existing Code
 
@@ -455,13 +513,38 @@ Before merging any PR with code changes:
 
 Can't check all boxes? Return to RED step and start over.
 
+## Test Coverage Status
+
+### Completed ✓
+1. ~~Create test_helper.rb with shared utilities~~ ✓
+2. ~~Write tests for brew-offline-curl~~ ✓ (23 tests, 81 assertions)
+3. ~~Add integration tests~~ ✓ (full workflow end-to-end)
+4. ~~Add to CI/CD~~ ✓ (3 jobs, Ubuntu + macOS)
+
+### In Progress
+- brew-offline-install tests (pending)
+- brew-mirror tests (pending)
+
+### Future
+- Cask integration tests (mirror → install cask)
+- Performance benchmarking tests
+- Concurrent download tests
+- Error injection tests (network failures, disk full, etc.)
+
 ## Next Steps
 
-1. **Immediate:** Create test_helper.rb with shared utilities
-2. **Phase 1:** Write tests for brew-offline-curl (smallest, simplest)
-3. **Phase 2:** Write tests for brew-offline-install
-4. **Phase 3:** Write tests for brew-mirror (largest, most complex)
-5. **Phase 4:** Add integration tests
-6. **Phase 5:** Add to CI/CD
+1. **Immediate:** Write tests for brew-offline-install
+   - Configuration validation
+   - Tap reset logic
+   - Install command generation
+
+2. **Soon:** Write tests for brew-mirror
+   - Formula/cask iteration
+   - Download orchestration
+   - Config/urlmap generation
+
+3. **Eventually:** Add cask integration tests
+   - Mirror cask with brew-mirror --casks
+   - Install cask with brew-offline-install --cask
 
 All future work: **TDD from the start. No exceptions.**

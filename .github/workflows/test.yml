@@ -220,24 +220,59 @@ jobs:
         run: |
           ruby mirror/test/security_test.rb --verbose
 
-  # Placeholder for future integration tests
-  # test-integration:
-  #   name: Integration Tests
-  #   runs-on: macos-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Run integration tests
-  #       run: echo "Integration tests will be added in Phase 2-5"
+  test-integration:
+    name: Integration Tests (End-to-End)
+    runs-on: macos-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
 
-  # Future: End-to-end formula mirroring tests (requires Phase 2+ implementation)
-  # verify-formulae:
-  #   name: Verify Real Formulae Work
-  #   runs-on: macos-latest
-  #   if: github.ref == 'refs/heads/main'
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Mirror and install formula
-  #       run: echo "End-to-end formula tests will be added after Phase 2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Verify Homebrew installation
+        run: |
+          echo "Homebrew version:"
+          brew --version
+          echo ""
+          echo "Homebrew paths:"
+          echo "  prefix: $(brew --prefix)"
+          echo "  repository: $(brew --repository)"
+          echo ""
+          brew update --quiet
+
+      - name: Ensure homebrew-core tap exists
+        run: |
+          if [ ! -d "$(brew --repository)/Library/Taps/homebrew/homebrew-core" ]; then
+            echo "Installing homebrew-core tap..."
+            brew tap homebrew/core
+          fi
+          echo "✓ homebrew-core tap exists"
+
+      - name: Run integration tests
+        run: |
+          echo "Running end-to-end integration tests..."
+          echo "This will mirror, serve, and install a real formula (jq)"
+          echo ""
+          cd mirror/test
+          bash run_integration_tests.sh
+
+      - name: Display integration test summary
+        if: always()
+        run: |
+          echo ""
+          echo "======================================"
+          echo "Integration Test Summary"
+          echo "======================================"
+          echo "Tests verify full offline brew workflow:"
+          echo "  1. Mirror formula with brew-mirror"
+          echo "  2. Serve mirror via HTTP"
+          echo "  3. Install formula with brew-offline-install"
+          echo "  4. Verify formula works"
+          echo ""
 
   # Future: End-to-end cask mirroring tests (requires Phase 2 implementation)
   # verify-casks:

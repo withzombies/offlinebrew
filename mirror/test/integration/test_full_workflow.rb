@@ -1,0 +1,303 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require_relative "../test_helper"
+require "tmpdir"
+require "webrick"
+require "json"
+
+# TestFullWorkflow: End-to-end integration tests
+#
+# NOTE: This is a regression test for existing functionality, not true TDD.
+# The brew-mirror and brew-offline-install scripts were written before tests.
+# Going forward, all changes MUST follow TDD.
+#
+# This test verifies the complete workflow:
+# 1. Mirror a formula with brew-mirror
+# 2. Serve mirror via HTTP
+# 3. Install formula with brew-offline-install
+# 4. Verify formula works
+#
+# Requirements:
+# - Real Homebrew installation (macOS or Linux with Homebrew)
+# - Network access (to download bottles during mirror step)
+# - ~2-5 minutes execution time
+class TestFullWorkflow < Minitest::Test
+  # Test formula: jq (small, simple, single binary)
+  TEST_FORMULA = "jq"
+  TEST_PORT = 8765
+
+  def setup
+    skip "Integration tests require Homebrew" unless homebrew_available?
+
+    @mirror_dir = nil
+    @http_server = nil
+    @original_tap_commit = current_tap_commit
+  end
+
+  def teardown
+    # Stop HTTP server
+    if @http_server
+      @http_server.shutdown
+      @http_server = nil
+    end
+
+    # Uninstall test formula
+    system("brew", "uninstall", "--force", TEST_FORMULA, out: File::NULL, err: File::NULL)
+
+    # Reset tap to original commit
+    if @original_tap_commit
+      reset_tap(@original_tap_commit)
+    end
+
+    # Clean up mirror directory
+    if @mirror_dir && File.exist?(@mirror_dir)
+      FileUtils.rm_rf(@mirror_dir)
+    end
+  end
+
+  # Integration test: Full mirror → serve → install workflow
+  def test_full_workflow_mirror_serve_install
+    puts "\n" + "=" * 70
+    puts "Integration Test: Full Offline Brew Workflow"
+    puts "=" * 70
+
+    # Step 1: Mirror the formula
+    puts "\n[Step 1/4] Mirroring #{TEST_FORMULA}..."
+    @mirror_dir = mirror_formula(TEST_FORMULA)
+
+    # Verify mirror created files
+    assert File.exist?(File.join(@mirror_dir, "config.json")),
+      "config.json should exist after mirroring"
+    assert File.exist?(File.join(@mirror_dir, "urlmap.json")),
+      "urlmap.json should exist after mirroring"
+
+    config = JSON.parse(File.read(File.join(@mirror_dir, "config.json")))
+    assert config["taps"], "Config should have taps"
+    assert config["taps"]["homebrew/homebrew-core"], "Config should have core tap"
+    assert config["taps"]["homebrew/homebrew-core"]["commit"], "Config should have tap commit"
+
+    puts "  ✓ Mirror created successfully"
+    puts "  ✓ config.json contains tap commit: #{config["taps"]["homebrew/homebrew-core"]["commit"][0..7]}"
+
+    # Step 2: Serve the mirror
+    puts "\n[Step 2/4] Starting HTTP server on port #{TEST_PORT}..."
+    start_http_server(@mirror_dir, TEST_PORT)
+    puts "  ✓ HTTP server started at http://localhost:#{TEST_PORT}"
+
+    # Step 3: Install from mirror
+    puts "\n[Step 3/4] Installing #{TEST_FORMULA} from offline mirror..."
+
+    # Uninstall if already present
+    if formula_installed?(TEST_FORMULA)
+      puts "  - Uninstalling existing #{TEST_FORMULA}..."
+      system("brew", "uninstall", "--force", TEST_FORMULA, out: File::NULL, err: File::NULL)
+    end
+
+    install_result = install_from_mirror(TEST_FORMULA, @mirror_dir)
+
+    if install_result[:success]
+      puts "  ✓ Installation completed"
+    else
+      puts "  ✗ Installation failed"
+      puts install_result[:output]
+      flunk "Installation failed: #{install_result[:output]}"
+    end
+
+    # Step 4: Verify the formula works
+    puts "\n[Step 4/4] Verifying #{TEST_FORMULA} works..."
+    assert formula_installed?(TEST_FORMULA),
+      "#{TEST_FORMULA} should be installed"
+
+    # Test jq actually works
+    test_result = run_command("jq --version")
+    assert test_result[:success], "jq --version should succeed"
+    assert_output_contains(test_result[:stdout], "jq",
+      "jq should report its version")
+
+    puts "  ✓ #{TEST_FORMULA} is installed and functional"
+
+    puts "\n" + "=" * 70
+    puts "Integration Test: PASSED ✓"
+    puts "=" * 70
+  end
+
+  # Test: Mirror creation with dry-run
+  def test_mirror_dry_run
+    puts "\n" + "=" * 70
+    puts "Integration Test: Mirror Dry-Run"
+    puts "=" * 70
+
+    Dir.mktmpdir do |tmpdir|
+      puts "\n[Test] Running brew-mirror --dry-run..."
+
+      result = run_command(
+        "ruby #{brew_mirror_path} --formulae #{TEST_FORMULA} --dry-run --directory #{tmpdir}",
+        env: {}
+      )
+
+      # Dry-run should succeed
+      assert result[:success], "Dry-run should succeed: #{result[:stderr]}"
+
+      # Should not create actual files
+      refute File.exist?(File.join(tmpdir, "config.json")),
+        "Dry-run should not create config.json"
+
+      # Output should show what would be done
+      assert_output_contains(result[:stdout], "Would mirror",
+        "Dry-run should show what would be mirrored")
+
+      puts "  ✓ Dry-run completed successfully"
+      puts "  ✓ No files created (as expected)"
+    end
+
+    puts "\n" + "=" * 70
+    puts "Dry-Run Test: PASSED ✓"
+    puts "=" * 70
+  end
+
+  # Test: Config validation in brew-offline-install
+  def test_offline_install_validates_config
+    puts "\n" + "=" * 70
+    puts "Integration Test: Config Validation"
+    puts "=" * 70
+
+    Dir.mktmpdir do |tmpdir|
+      # Create invalid config (missing tap commit)
+      invalid_config = {
+        baseurl: "http://localhost:8000",
+        taps: {
+          "homebrew/homebrew-core" => {}
+        }
+      }
+
+      File.write(
+        File.join(tmpdir, "config.json"),
+        JSON.pretty_generate(invalid_config)
+      )
+
+      puts "\n[Test] Running brew-offline-install with invalid config..."
+
+      result = run_command(
+        "ruby #{brew_offline_install_path} --config #{File.join(tmpdir, 'config.json')} #{TEST_FORMULA}",
+        env: {}
+      )
+
+      # Should fail with validation error
+      refute result[:success], "Should fail with invalid config"
+      assert_output_contains(result[:stderr], "commit",
+        "Should mention missing commit")
+
+      puts "  ✓ Invalid config rejected (as expected)"
+      puts "  ✓ Error message indicates missing commit"
+    end
+
+    puts "\n" + "=" * 70
+    puts "Config Validation Test: PASSED ✓"
+    puts "=" * 70
+  end
+
+  private
+
+  # Check if Homebrew is available
+  def homebrew_available?
+    system("brew --version > /dev/null 2>&1")
+  end
+
+  # Get current tap commit
+  def current_tap_commit
+    tap_dir = `brew --repository homebrew/core`.strip
+    return nil unless Dir.exist?(tap_dir)
+
+    Dir.chdir(tap_dir) do
+      `git rev-parse HEAD`.strip
+    end
+  rescue
+    nil
+  end
+
+  # Reset tap to specific commit
+  def reset_tap(commit)
+    tap_dir = `brew --repository homebrew/core`.strip
+    return unless Dir.exist?(tap_dir)
+
+    Dir.chdir(tap_dir) do
+      system("git", "fetch", "--quiet", "origin", out: File::NULL, err: File::NULL)
+      system("git", "checkout", "--quiet", commit, out: File::NULL, err: File::NULL)
+    end
+  end
+
+  # Mirror a formula using brew-mirror
+  def mirror_formula(formula)
+    tmpdir = Dir.mktmpdir("brew-mirror-test-")
+
+    puts "  - Running brew-mirror --formulae #{formula}"
+    puts "  - Mirror directory: #{tmpdir}"
+
+    result = run_command(
+      "ruby #{brew_mirror_path} --formulae #{formula} --directory #{tmpdir}",
+      env: {}
+    )
+
+    unless result[:success]
+      FileUtils.rm_rf(tmpdir)
+      flunk "Mirror failed: #{result[:stderr]}"
+    end
+
+    tmpdir
+  end
+
+  # Start HTTP server to serve mirror
+  def start_http_server(directory, port)
+    @http_server = WEBrick::HTTPServer.new(
+      Port: port,
+      DocumentRoot: directory,
+      Logger: WEBrick::Log.new(File::NULL),
+      AccessLog: []
+    )
+
+    # Run server in background thread
+    Thread.new { @http_server.start }
+
+    # Wait for server to start
+    sleep 1
+  end
+
+  # Install formula from offline mirror
+  def install_from_mirror(formula, mirror_dir)
+    config_path = File.join(mirror_dir, "config.json")
+
+    # Update config baseurl to point to our test server
+    config = JSON.parse(File.read(config_path))
+    config["baseurl"] = "http://localhost:#{TEST_PORT}"
+    File.write(config_path, JSON.pretty_generate(config))
+
+    puts "  - Running brew-offline-install #{formula}"
+    puts "  - Config: #{config_path}"
+
+    result = run_command(
+      "ruby #{brew_offline_install_path} --config #{config_path} #{formula}",
+      env: {}
+    )
+
+    {
+      success: result[:success],
+      output: result[:stdout] + "\n" + result[:stderr]
+    }
+  end
+
+  # Check if formula is installed
+  def formula_installed?(formula)
+    system("brew list #{formula} > /dev/null 2>&1")
+  end
+
+  # Path to brew-mirror script
+  def brew_mirror_path
+    File.expand_path("../../bin/brew-mirror", __dir__)
+  end
+
+  # Path to brew-offline-install script
+  def brew_offline_install_path
+    File.expand_path("../../bin/brew-offline-install", __dir__)
+  end
+end
