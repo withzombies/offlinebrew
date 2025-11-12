@@ -132,7 +132,7 @@ class TestFullWorkflow < Minitest::Test
       puts "\n[Test] Running brew-mirror --dry-run..."
 
       result = run_command(
-        "brew ruby #{brew_mirror_path} -- --formulae #{TEST_FORMULA} --dry-run --directory #{tmpdir}",
+        "brew ruby #{brew_mirror_path} --formulae #{TEST_FORMULA} --dry-run --directory #{tmpdir}",
         env: {}
       )
 
@@ -179,7 +179,7 @@ class TestFullWorkflow < Minitest::Test
       puts "\n[Test] Running brew-offline-install with invalid config..."
 
       result = run_command(
-        "brew ruby #{brew_offline_install_path} -- --config #{File.join(tmpdir, 'config.json')} #{TEST_FORMULA}",
+        "brew ruby #{brew_offline_install_path} --config #{File.join(tmpdir, 'config.json')} #{TEST_FORMULA}",
         env: {}
       )
 
@@ -235,7 +235,7 @@ class TestFullWorkflow < Minitest::Test
     puts "  - Mirror directory: #{tmpdir}"
 
     result = run_command(
-      "brew ruby #{brew_mirror_path} -- --formulae #{formula} --directory #{tmpdir}",
+      "brew ruby #{brew_mirror_path} --formulae #{formula} --directory #{tmpdir}",
       env: {}
     )
 
@@ -291,7 +291,7 @@ class TestFullWorkflow < Minitest::Test
     puts "  - Config: #{config_path}"
 
     result = run_command(
-      "brew ruby #{brew_offline_install_path} -- --config #{config_path} #{formula}",
+      "brew ruby #{brew_offline_install_path} --config #{config_path} #{formula}",
       env: {}
     )
 
