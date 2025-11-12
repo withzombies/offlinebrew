@@ -3,6 +3,7 @@
 
 require_relative "../test_helper"
 require "tmpdir"
+require "tempfile"
 require "json"
 
 # TestFullWorkflow: End-to-end integration tests
@@ -261,32 +262,52 @@ class TestFullWorkflow < Minitest::Test
   # Start HTTP server to serve mirror
   # Uses Ruby's built-in httpd (no external dependencies)
   def start_http_server(directory, port)
+    # Capture server output for debugging
+    server_stdout = Tempfile.new("http-server-stdout")
+    server_stderr = Tempfile.new("http-server-stderr")
+
     # Start Ruby's built-in HTTP server in background
     @http_server_pid = spawn(
       "ruby", "-run", "-e", "httpd", directory, "-p", port.to_s,
-      out: File::NULL,
-      err: File::NULL
+      out: server_stdout.path,
+      err: server_stderr.path
     )
 
     # Wait for server to start
     sleep 2
 
+    # Check if process is still running
+    begin
+      Process.kill(0, @http_server_pid)
+    rescue Errno::ESRCH
+      # Process died
+      flunk "HTTP server process died immediately. Stderr: #{File.read(server_stderr.path)}"
+    end
+
     # Verify server is responding
     require "net/http"
     retries = 0
+    last_error = nil
     loop do
       begin
         Net::HTTP.get(URI("http://localhost:#{port}/config.json"))
         break
-      rescue
+      rescue => e
+        last_error = e
         retries += 1
         if retries > 10
+          # Capture error details
+          stderr_content = File.read(server_stderr.path) rescue "Could not read stderr"
           Process.kill("TERM", @http_server_pid) rescue nil
-          flunk "HTTP server failed to start"
+          flunk "HTTP server failed to start after #{retries} retries. Last error: #{last_error.message}. Server stderr: #{stderr_content}"
         end
         sleep 1
       end
     end
+  ensure
+    # Clean up temp files
+    server_stdout.close rescue nil
+    server_stderr.close rescue nil
   end
 
   # Install formula from offline mirror
