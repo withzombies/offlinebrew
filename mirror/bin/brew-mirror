@@ -215,7 +215,12 @@ options[:iterator].each do |formula|
 
   resources.each do |res|
     # We'll do the logging here.
-    res.downloader.shutup!
+    # Suppress downloader output (quiet! in newer Homebrew, shutup! in older versions)
+    if res.downloader.respond_to?(:quiet!)
+      res.downloader.quiet!
+    elsif res.downloader.respond_to?(:shutup!)
+      res.downloader.shutup!
+    end
     ohai "\tResource url: #{res.url}"
 
     old_location = res.downloader.cached_location
@@ -313,7 +318,12 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
       end
 
       # Download with retry logic
-      downloader.shutup!
+      # Suppress downloader output (quiet! in newer Homebrew, shutup! in older versions)
+      if downloader.respond_to?(:quiet!)
+        downloader.quiet!
+      elsif downloader.respond_to?(:shutup!)
+        downloader.shutup!
+      end
 
       # Check if already in Homebrew cache
       if DownloadHelpers.cached?(downloader)

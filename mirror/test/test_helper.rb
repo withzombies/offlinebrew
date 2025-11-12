@@ -154,8 +154,31 @@ module TestHelper
         # Set ARGV before executing brew-mirror
         ARGV.replace(#{args.inspect})
 
-        # Read and eval brew-mirror in the current context (which has Homebrew methods)
-        # Using eval instead of load ensures the code runs in this script's context
+        # Define Homebrew CLI output methods if not available
+        # These are normally provided by Homebrew's command infrastructure
+        unless defined?(ohai)
+          def ohai(message)
+            puts message
+          end
+
+          def opoo(message)
+            warn message
+          end
+
+          def onoe(message)
+            warn "Error: \#{message}"
+          end
+
+          def odebug(message)
+            puts "Debug: \#{message}" if ENV["HOMEBREW_DEBUG"]
+          end
+
+          def odie(message)
+            abort "Error: \#{message}"
+          end
+        end
+
+        # Read and eval brew-mirror in the current context
         eval(File.read(#{brew_mirror_path.inspect}), binding, #{brew_mirror_path.inspect}, 1)
       RUBY
       f.flush
