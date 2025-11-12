@@ -151,6 +151,12 @@ is_cask_install = true if ARGV.first == "cask"
 # Use OfflinebrewConfig for consistent config location detection
 # NOTE: These are runtime variables, not constants, so they're evaluated
 # when the script runs (allowing REAL_HOME environment variable to work)
+
+# DEBUG: Print environment info
+warn "DEBUG brew-offline-install: ENV['REAL_HOME'] = #{ENV['REAL_HOME'].inspect}"
+warn "DEBUG brew-offline-install: ENV['HOME'] = #{ENV['HOME'].inspect}"
+warn "DEBUG brew-offline-install: OfflinebrewConfig.real_home_directory = #{OfflinebrewConfig.real_home_directory.inspect}"
+
 brew_offline_dir = OfflinebrewConfig.config_dir
 
 # TODO(ww): We should be fetching most of the configuration options from
@@ -158,6 +164,9 @@ brew_offline_dir = OfflinebrewConfig.config_dir
 # want (and need) locally is the mirror's address.
 brew_offline_local_config = OfflinebrewConfig.config_path
 brew_offline_local_urlmap = OfflinebrewConfig.urlmap_path
+
+warn "DEBUG brew-offline-install: brew_offline_local_config = #{brew_offline_local_config.inspect}"
+warn "DEBUG brew-offline-install: Attempting to read config file..."
 
 config = JSON.parse File.read(brew_offline_local_config), symbolize_names: true
 baseurl = config[:baseurl]

@@ -157,6 +157,68 @@ class TestFullWorkflow < Minitest::Test
     puts "=" * 70
   end
 
+  # Test: REAL_HOME environment variable is respected
+  def test_real_home_environment_variable
+    puts "\n" + "=" * 70
+    puts "Integration Test: REAL_HOME Environment Variable"
+    puts "=" * 70
+
+    Dir.mktmpdir do |tmpdir|
+      puts "\n[Test] Verifying REAL_HOME is respected by brew-offline-install..."
+      puts "  - tmpdir: #{tmpdir}"
+
+      # Create .offlinebrew directory in tmpdir
+      offlinebrew_dir = File.join(tmpdir, ".offlinebrew")
+      Dir.mkdir(offlinebrew_dir)
+
+      # Create minimal valid config
+      valid_config = {
+        baseurl: "http://localhost:8000",
+        taps: {
+          "homebrew/homebrew-core" => {
+            "commit" => "abc123",
+            "type" => "formula"
+          }
+        }
+      }
+
+      File.write(
+        File.join(offlinebrew_dir, "config.json"),
+        JSON.pretty_generate(valid_config)
+      )
+      File.write(File.join(offlinebrew_dir, "urlmap.json"), "{}")
+
+      puts "  - Created config in: #{offlinebrew_dir}"
+      puts "  - Running brew-offline-install to check REAL_HOME"
+
+      # Run brew-offline-install - it will fail but we'll see debug output
+      result = run_command(
+        "#{brew_offline_install_path} nonexistent-formula || true",
+        env: { "REAL_HOME" => tmpdir }
+      )
+
+      output = result[:stdout] + result[:stderr]
+      puts "\n[Debug Output]:"
+      puts output
+
+      # Check debug messages
+      assert_match(/DEBUG brew-offline-install/, output,
+        "Should have debug output")
+
+      assert_match(/REAL_HOME.*#{Regexp.escape(tmpdir)}/, output,
+        "Debug should show REAL_HOME = tmpdir")
+
+      assert_match(/brew_offline_local_config.*#{Regexp.escape(tmpdir)}/, output,
+        "Debug should show config path in tmpdir")
+
+      puts "\n  ✓ REAL_HOME environment variable working correctly"
+    end
+
+    puts "\n" + "=" * 70
+    puts "REAL_HOME Test: PASSED ✓"
+    puts "=" * 70
+  end
+
   # Test: Config validation in brew-offline-install
   def test_offline_install_validates_config
     puts "\n" + "=" * 70
