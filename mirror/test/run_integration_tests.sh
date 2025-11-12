@@ -33,6 +33,14 @@ fi
 echo "✓ Ruby found: $(ruby --version)"
 echo ""
 
+# Check if webrick is available (required for Ruby 3.0+)
+if ! ruby -e "require 'webrick'" 2>/dev/null; then
+    echo "Installing webrick gem (required for Ruby 3.0+)..."
+    gem install webrick --no-document
+    echo "✓ webrick installed"
+    echo ""
+fi
+
 # Run integration tests
 echo "Running integration tests..."
 echo "This will take several minutes (downloading bottles, running installs)"

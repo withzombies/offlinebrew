@@ -114,7 +114,8 @@ ENV["HOMEBREW_VERBOSE"] = "1"
 
 # Set REAL_HOME so that our shim scripts can find the config even when
 # Homebrew runs them with a fake $HOME (which happens during sandbox builds).
-ENV["REAL_HOME"] = Dir.home
+# Only set if not already set (to allow tests to override).
+ENV["REAL_HOME"] ||= Dir.home
 
 # We want to minimize the number of non-package network requests we do,
 # both for performance and stability reasons.
