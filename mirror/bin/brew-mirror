@@ -10,6 +10,8 @@ require "securerandom"
 require_relative "../lib/homebrew_paths"
 require_relative "../lib/safe_shell"
 require_relative "../lib/cask_helpers"
+require_relative "../lib/container_helpers"
+require_relative "../lib/download_helpers"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
@@ -284,28 +286,66 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
                      Digest::SHA256.hexdigest(url_str)
                    end
 
-      # Download location
-      downloader.shutup!
-      old_location = downloader.cached_location
+      # Detect container extension (DMG, PKG, ZIP, etc.)
+      extension = ContainerHelpers.detect_extension(url_str)
       new_location = Pathname.new(File.join(options[:directory],
-                                            "#{identifier}#{old_location.extname}"))
+                                            "#{identifier}#{extension}"))
 
-      # Download if not already present
-      unless new_location.exist?
-        begin
-          downloader.fetch
-        rescue StandardError => e
-          opoo "Download failed for #{url_str}: #{e.message}"
-          next
-        end
+      # Check if already downloaded to mirror
+      if new_location.exist?
+        ohai "\tAlready mirrored: #{ContainerHelpers.human_size(new_location)}"
+        ohai "\t  Type: #{ContainerHelpers.container_type(new_location)}"
+
+        # Add to urlmap
+        urlmap[url_str] = new_location.basename.to_s
+        next  # Skip to next cask
       end
 
-      # Move to mirror location
-      if new_location.exist?
-        ohai "\tAlready mirrored!"
+      # Download with retry logic
+      downloader.shutup!
+
+      # Check if already in Homebrew cache
+      if DownloadHelpers.cached?(downloader)
+        cached_size = DownloadHelpers.cached_size(downloader)
+        ohai "\tFound in Homebrew cache: #{ContainerHelpers.human_size(Pathname.new(cached_size.to_s))}" if cached_size
       else
-        FileUtils.mv old_location.to_s, new_location.to_s, force: true
-        ohai "\t#{old_location.basename} -> #{new_location.basename}"
+        ohai "\tDownloading..."
+        start_time = Time.now
+
+        unless DownloadHelpers.fetch_with_retry(downloader, max_retries: 2)
+          opoo "Download failed for #{url_str} after retries"
+          next
+        end
+
+        elapsed = Time.now - start_time
+        ohai "\tDownload completed in #{elapsed.round(1)}s"
+      end
+
+      # Move from cache to mirror location
+      old_location = downloader.cached_location
+      unless old_location.exist?
+        opoo "Downloaded file not found at #{old_location}"
+        next
+      end
+
+      FileUtils.mv old_location.to_s, new_location.to_s, force: true
+
+      # Verify the container
+      if ContainerHelpers.verify_container(new_location)
+        ohai "\t✓ Verified: #{ContainerHelpers.human_size(new_location)}"
+        ohai "\t  Type: #{ContainerHelpers.container_type(new_location)}"
+      else
+        opoo "\t⚠ Verification failed (file may be corrupted)"
+        ohai "\t  Size: #{ContainerHelpers.human_size(new_location)}"
+      end
+
+      # Verify checksum if available
+      if checksum && checksum != :no_check
+        if DownloadHelpers.verify_checksum(new_location, checksum)
+          ohai "\t✓ Checksum verified"
+        else
+          opoo "\t⚠ Checksum mismatch!"
+        end
       end
 
       # Add to urlmap
@@ -319,6 +359,25 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
 
     sleep options[:sleep]
   end
+
+  # Print cask mirror statistics
+  ohai "Cask mirror statistics:"
+  cask_count = cask_iterator.count
+  puts "  Casks processed: #{cask_count}"
+
+  # Count files by extension
+  cask_files = Dir.glob("#{options[:directory]}/*.{dmg,pkg,zip,tar.gz}").select { |f| File.file?(f) }
+  puts "  Container files: #{cask_files.count}"
+
+  # Calculate total size
+  if cask_files.any?
+    total_bytes = cask_files.sum { |f| File.size(f) }
+    require_relative "../lib/container_helpers"
+    total_size = ContainerHelpers.human_size(Pathname.new(total_bytes.to_s))
+    puts "  Total cask size: #{total_size}"
+  end
+
+  puts ""
 else
   if !CaskHelpers.cask_api_available?
     ohai "Skipping cask mirroring (Cask API not available)"
