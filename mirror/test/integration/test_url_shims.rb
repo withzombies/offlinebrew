@@ -110,16 +110,36 @@ class TestURLShims < Minitest::Test
 
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "wget", "-d", tmpdir]
+        ["-f", "wget", "-d", tmpdir],
+        env: { "HOMEBREW_VERBOSE" => "1" }
       )
 
-      assert result[:success], "Mirror should succeed"
+      unless result[:success]
+        puts "Mirror FAILED:"
+        puts "STDOUT: #{result[:stdout]}"
+        puts "STDERR: #{result[:stderr]}"
+      end
+
+      assert result[:success], "Mirror should succeed: #{result[:stderr]}"
 
       # Load urlmap
       urlmap_path = File.join(tmpdir, "urlmap.json")
       assert File.exist?(urlmap_path), "urlmap.json should exist"
 
       urlmap = JSON.parse(File.read(urlmap_path))
+
+      # Debug: Show what happened
+      if urlmap.empty?
+        puts "\nDEBUG: URLmap is empty!"
+        puts "Mirror stdout:"
+        puts result[:stdout]
+        puts "\nMirror stderr:"
+        puts result[:stderr]
+        puts "\nConfig file:"
+        puts File.read(File.join(tmpdir, "config.json"))
+        puts "\nMirror directory contents:"
+        puts Dir.glob(File.join(tmpdir, "*")).map { |f| "  #{File.basename(f)}" }.join("\n")
+      end
 
       # urlmap should have entries
       refute_empty urlmap, "URLmap should not be empty"
@@ -154,8 +174,15 @@ class TestURLShims < Minitest::Test
       # Mirror two small formulae
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq,tree", "-d", tmpdir, "-s", "0.1"]
+        ["-f", "jq,tree", "-d", tmpdir, "-s", "0.1"],
+        env: { "HOMEBREW_VERBOSE" => "1" }
       )
+
+      unless result[:success]
+        puts "Mirror FAILED:"
+        puts "STDOUT: #{result[:stdout]}"
+        puts "STDERR: #{result[:stderr]}"
+      end
 
       assert result[:success], "Mirror should succeed: #{result[:stderr]}"
 
@@ -166,7 +193,17 @@ class TestURLShims < Minitest::Test
 
       # Check urlmap
       urlmap = JSON.parse(File.read(File.join(tmpdir, "urlmap.json")))
-      assert urlmap.keys.count >= 2, "Should have URLs for both formulae"
+
+      # Debug if empty
+      if urlmap.empty?
+        puts "\nDEBUG: URLmap is empty for multiple formulae!"
+        puts "Mirror stdout:"
+        puts result[:stdout]
+        puts "\nMirror stderr:"
+        puts result[:stderr]
+      end
+
+      assert urlmap.keys.count >= 2, "Should have URLs for both formulae. Got #{urlmap.keys.count} URLs"
 
       puts "  ✓ Multiple formulae mirrored"
       puts "  ✓ URLmap contains #{urlmap.keys.count} entries"

@@ -205,8 +205,18 @@ options[:iterator].each do |formula|
                        formula.tap.to_s
                      end
 
-  # Normalize tap name to match config format
+  # Debug: Show tap name before and after normalization
+  original_tap_name = formula_tap_name
   formula_tap_name = normalize_tap_name(formula_tap_name)
+
+  if ENV["HOMEBREW_VERBOSE"]
+    puts "DEBUG: Formula #{formula.name}"
+    puts "  Original tap: #{original_tap_name}"
+    puts "  Normalized tap: #{formula_tap_name}"
+    puts "  Config taps: #{config[:taps].keys.inspect}"
+    puts "  Match: #{config[:taps].key?(formula_tap_name)}"
+  end
+
   next unless config[:taps].key?(formula_tap_name)
 
   ohai "Collecting resources for #{formula.name}..."
