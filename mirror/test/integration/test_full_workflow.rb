@@ -3,7 +3,6 @@
 
 require_relative "../test_helper"
 require "tmpdir"
-require "webrick"
 require "json"
 
 # TestFullWorkflow: End-to-end integration tests
@@ -31,15 +30,16 @@ class TestFullWorkflow < Minitest::Test
     skip "Integration tests require Homebrew" unless homebrew_available?
 
     @mirror_dir = nil
-    @http_server = nil
+    @http_server_pid = nil
     @original_tap_commit = current_tap_commit
   end
 
   def teardown
     # Stop HTTP server
-    if @http_server
-      @http_server.shutdown
-      @http_server = nil
+    if @http_server_pid
+      Process.kill("TERM", @http_server_pid) rescue nil
+      Process.wait(@http_server_pid) rescue nil
+      @http_server_pid = nil
     end
 
     # Uninstall test formula
@@ -248,19 +248,34 @@ class TestFullWorkflow < Minitest::Test
   end
 
   # Start HTTP server to serve mirror
+  # Uses Ruby's built-in httpd (no external dependencies)
   def start_http_server(directory, port)
-    @http_server = WEBrick::HTTPServer.new(
-      Port: port,
-      DocumentRoot: directory,
-      Logger: WEBrick::Log.new(File::NULL),
-      AccessLog: []
+    # Start Ruby's built-in HTTP server in background
+    @http_server_pid = spawn(
+      "ruby", "-run", "-e", "httpd", directory, "-p", port.to_s,
+      out: File::NULL,
+      err: File::NULL
     )
 
-    # Run server in background thread
-    Thread.new { @http_server.start }
-
     # Wait for server to start
-    sleep 1
+    sleep 2
+
+    # Verify server is responding
+    require "net/http"
+    retries = 0
+    loop do
+      begin
+        Net::HTTP.get(URI("http://localhost:#{port}/config.json"))
+        break
+      rescue
+        retries += 1
+        if retries > 10
+          Process.kill("TERM", @http_server_pid) rescue nil
+          flunk "HTTP server failed to start"
+        end
+        sleep 1
+      end
+    end
   end
 
   # Install formula from offline mirror
