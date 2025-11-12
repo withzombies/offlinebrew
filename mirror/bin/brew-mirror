@@ -170,6 +170,26 @@ if options[:config_only]
   exit
 end
 
+# Helper function to normalize tap names
+# Homebrew API returns "homebrew/core" but we store "homebrew/homebrew-core"
+def normalize_tap_name(tap_name)
+  # Convert short form to full form
+  # "homebrew/core" -> "homebrew/homebrew-core"
+  # "homebrew/cask" -> "homebrew/homebrew-cask"
+  if tap_name =~ %r{^([^/]+)/([^/]+)$}
+    user = $1
+    repo = $2
+    # If repo doesn't start with "homebrew-", add it
+    if user == "homebrew" && !repo.start_with?("homebrew-")
+      "#{user}/homebrew-#{repo}"
+    else
+      tap_name
+    end
+  else
+    tap_name
+  end
+end
+
 # Finally, fetch the (stable) resources for each formula from configured taps.
 options[:iterator].each do |formula|
   # Skip formulae that aren't in configured taps
@@ -177,13 +197,16 @@ options[:iterator].each do |formula|
   formula_tap_name = if formula.tap.respond_to?(:full_name)
                        formula.tap.full_name
                      elsif formula.tap.core_tap?
-                       "homebrew/homebrew-core"
+                       "homebrew/core"  # Use short form, will be normalized
                      elsif formula.tap.respond_to?(:user) && formula.tap.respond_to?(:repo)
                        "#{formula.tap.user}/#{formula.tap.repo}"
                      else
                        # Fallback: try to get name from tap
                        formula.tap.to_s
                      end
+
+  # Normalize tap name to match config format
+  formula_tap_name = normalize_tap_name(formula_tap_name)
   next unless config[:taps].key?(formula_tap_name)
 
   ohai "Collecting resources for #{formula.name}..."
@@ -304,7 +327,11 @@ if CaskHelpers.cask_api_available? && !cask_taps.empty?
                         # Fallback: try to get name from tap
                         cask.tap.to_s
                       end
-      next unless cask_tap_name == tap_name
+
+      # Normalize both tap names for comparison
+      cask_tap_name = normalize_tap_name(cask_tap_name)
+      normalized_tap_name = normalize_tap_name(tap_name)
+      next unless cask_tap_name == normalized_tap_name
     end
 
     ohai "Collecting resources for cask: #{cask.token}..."
