@@ -63,6 +63,18 @@ Complex real-world scenarios:
 
 **Tests**: 6 | **Runtime**: ~1 minute (fast), ~5 minutes (with slow tests)
 
+### 6. Mirror Verification Tests (`test_verification.rb`)
+Mirror integrity and verification (Task 4.1):
+- ✅ Verify valid mirror
+- ✅ Verify with --verify flag
+- ✅ Detect missing files
+- ✅ Detect missing config
+- ✅ Verbose verification output
+- ✅ Git cache verification
+- ✅ Help flag documentation
+
+**Tests**: 7 | **Runtime**: ~30 seconds
+
 ## Running Tests
 
 ```bash
@@ -75,6 +87,7 @@ Complex real-world scenarios:
 ./run_integration_tests.sh error       # Error handling only
 ./run_integration_tests.sh download    # Download strategies only
 ./run_integration_tests.sh real-world  # Real-world formulae only
+./run_integration_tests.sh verify      # Mirror verification only
 
 # Run with slow tests included
 RUN_SLOW_TESTS=1 ./run_integration_tests.sh real-world
@@ -151,13 +164,14 @@ Some formulae use download strategies we don't support:
 
 | Metric | Count |
 |--------|-------|
-| **Total Test Files** | 5 |
-| **Total Test Cases** | 32+ |
-| **Test Lines of Code** | ~1,800 |
-| **Coverage Areas** | 20+ |
+| **Total Test Files** | 6 |
+| **Total Test Cases** | 39+ |
+| **Test Lines of Code** | ~2,100 |
+| **Coverage Areas** | 25+ |
 | **Download Strategies Tested** | 5 |
 | **Formula Types Tested** | 10+ |
 | **Edge Cases Tested** | 15+ |
+| **Verification Checks** | 7 |
 
 ## CI/CD Integration
 

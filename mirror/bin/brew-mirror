@@ -126,6 +126,7 @@ options = {
   iterator: Formula,
   casks: nil,
   taps: ["homebrew/homebrew-core", "homebrew/homebrew-cask"],  # Default taps
+  verify: false,
 }
 
 OptionParser.new do |parser|
@@ -153,6 +154,10 @@ OptionParser.new do |parser|
 
   parser.on "--taps tap1,tap2", Array, "specify taps to mirror (default: core,cask)" do |taps|
     options[:taps] = taps
+  end
+
+  parser.on "--verify", "verify mirror integrity after creation" do
+    options[:verify] = true
   end
 end.parse!
 
@@ -566,3 +571,11 @@ File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
 # Write identifier cache for Git repository tracking
 # This tracks all Git identifiers to prevent duplicates on subsequent mirror runs
 File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
+
+# Verify mirror if requested
+if options[:verify]
+  ohai "Verifying mirror integrity..."
+  verify_script = File.expand_path("brew-mirror-verify", __dir__)
+  result = system("brew", "ruby", verify_script, options[:directory])
+  exit 1 unless result
+end

@@ -78,6 +78,12 @@ case "$TEST_SUITE" in
     ruby -I../lib:. integration/test_real_world_formulae.rb -v
     ;;
 
+  verify)
+    echo "Running mirror verification integration tests..."
+    echo ""
+    ruby -I../lib:. integration/test_verification.rb -v
+    ;;
+
   all|*)
     echo "Running all integration tests..."
     echo "This will take several minutes (downloading bottles, running installs)"
@@ -85,33 +91,39 @@ case "$TEST_SUITE" in
 
     echo ""
     echo "=============================================="
-    echo "[1/5] Full Workflow Tests"
+    echo "[1/6] Full Workflow Tests"
     echo "=============================================="
     ruby -I../lib:. integration/test_full_workflow.rb -v
 
     echo ""
     echo "=============================================="
-    echo "[2/5] URL Shim Tests"
+    echo "[2/6] URL Shim Tests"
     echo "=============================================="
     ruby -I../lib:. integration/test_url_shims.rb -v
 
     echo ""
     echo "=============================================="
-    echo "[3/5] Error Handling Tests"
+    echo "[3/6] Error Handling Tests"
     echo "=============================================="
     ruby -I../lib:. integration/test_error_handling.rb -v
 
     echo ""
     echo "=============================================="
-    echo "[4/5] Download Strategy Tests"
+    echo "[4/6] Download Strategy Tests"
     echo "=============================================="
     ruby -I../lib:. integration/test_download_strategies.rb -v
 
     echo ""
     echo "=============================================="
-    echo "[5/5] Real-World Formulae Tests"
+    echo "[5/6] Real-World Formulae Tests"
     echo "=============================================="
     ruby -I../lib:. integration/test_real_world_formulae.rb -v
+
+    echo ""
+    echo "=============================================="
+    echo "[6/6] Mirror Verification Tests"
+    echo "=============================================="
+    ruby -I../lib:. integration/test_verification.rb -v
     ;;
 esac
 
