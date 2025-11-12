@@ -145,11 +145,22 @@ module TestHelper
   # @example
   #   result = run_brew_mirror("/path/to/brew-mirror", ["-f", "jq", "-d", "/tmp"])
   def run_brew_mirror(brew_mirror_path, args, env: {})
-    # Wrapper code that sets ARGV and loads brew-mirror (single line to avoid escaping issues)
-    wrapper = "ARGV.replace(#{args.inspect}); load #{brew_mirror_path.inspect}"
+    # Create a temporary wrapper script that brew ruby can execute
+    # This ensures Homebrew's CLI context (ohai, opoo, etc.) is available
+    require "tempfile"
 
-    # Run via brew ruby -e (has Homebrew libraries, no option parsing)
-    run_command("brew ruby -e #{wrapper.inspect}", env: env)
+    Tempfile.create(["brew-mirror-wrapper", ".rb"]) do |f|
+      f.write(<<~RUBY)
+        # Set ARGV before loading brew-mirror
+        ARGV.replace(#{args.inspect})
+        # Load brew-mirror script
+        load #{brew_mirror_path.inspect}
+      RUBY
+      f.flush
+
+      # Execute via brew ruby (loads Homebrew context)
+      run_command("brew ruby #{f.path}", env: env)
+    end
   end
 
   # Stub a constant for the duration of a block
