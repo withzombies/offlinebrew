@@ -1,11 +1,80 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# brew-offline-install: Install formulae or casks from an offline mirror
+#
+# Usage:
+#   brew-offline-install <formula>           # Install a formula
+#   brew-offline-install --cask <caskname>   # Install a cask
+#   brew-offline-install <formula> <formula> # Install multiple formulae
+#   brew-offline-install --cask <cask> <cask> # Install multiple casks
+#
+# Configuration:
+#   ~/.offlinebrew/config.json must contain:
+#     {"baseurl": "http://mirror-server:8000"}
+#
+# The mirror must be created with brew-mirror and served via HTTP.
+# This script will reset taps to mirrored commits and use local shims
+# to redirect all downloads to the local mirror.
+
 require "json"
 require "net/http"
 require_relative "../lib/safe_shell"
 require_relative "../lib/homebrew_paths"
 require_relative "../lib/offlinebrew_config"
+
+# Validate configuration and environment
+#
+# @param config [Hash] Configuration hash with taps
+# @param is_cask_install [Boolean] Whether this is a cask installation
+def validate_configuration(config, is_cask_install)
+  # Check if the mirror has the required tap
+  taps = config[:taps] || config["taps"] || {}
+
+  if is_cask_install
+    unless taps["homebrew/homebrew-cask"]
+      abort <<~ERROR
+        ERROR: This mirror does not include casks.
+        The mirror was created without the homebrew-cask tap.
+
+        To create a mirror with cask support:
+          brew ruby mirror/bin/brew-mirror -d /path/to/mirror --casks <cask-names>
+
+        Or mirror all casks by omitting the --casks flag.
+      ERROR
+    end
+
+    # Check if cask tap is installed locally
+    unless HomebrewPaths.cask_tap_exists?
+      abort <<~ERROR
+        ERROR: homebrew-cask tap not installed locally.
+
+        Please install it first:
+          brew tap homebrew/cask
+
+        Then try your installation again.
+      ERROR
+    end
+  end
+
+  # Verify all mirrored taps are installed locally
+  taps.each do |tap_name, _tap_info|
+    tap_dir = case tap_name
+              when "homebrew/homebrew-core"
+                HomebrewPaths.core_tap_path
+              when "homebrew/homebrew-cask"
+                HomebrewPaths.cask_tap_path
+              else
+                user, repo = tap_name.split("/")
+                HomebrewPaths.tap_path(user, repo)
+              end
+
+    unless Dir.exist?(tap_dir)
+      warn "Warning: Tap #{tap_name} from mirror not found at #{tap_dir}"
+      warn "         Installation may fail if packages depend on this tap"
+    end
+  end
+end
 
 # Dynamically detect homebrew-core tap location
 CORE_TAP_DIR = HomebrewPaths.core_tap_path
@@ -20,13 +89,22 @@ unless Dir.exist?(CORE_TAP_DIR)
   abort "Fatal: homebrew-core tap not found at #{CORE_TAP_DIR}"
 end
 
-# On exit, return the core tap's `git` state to whatever it was before.
+# On exit, return all taps to their master branches.
 # It shouldn't actually hurt us to stay at whatever prior revision
 # we rewind to, but this should keep the number of warnings raised
 # by Homebrew down.
 at_exit do
+  # Restore core tap
   Dir.chdir CORE_TAP_DIR do
     SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
+  end
+
+  # Restore cask tap if it exists
+  cask_tap_dir = HomebrewPaths.cask_tap_path
+  if Dir.exist?(cask_tap_dir)
+    Dir.chdir cask_tap_dir do
+      SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
+    end
   end
 end
 
@@ -66,6 +144,10 @@ ENV["HOMEBREW_DEVELOPER"] = "1"
 ENV["HOMEBREW_CURL_PATH"] = "brew-offline-curl"
 ENV["HOMEBREW_GIT_PATH"] = "brew-offline-git"
 
+# Detect if user is trying to install a cask
+is_cask_install = ARGV.include?("--cask") || ARGV.include?("cask")
+is_cask_install = true if ARGV.first == "cask"
+
 # Use OfflinebrewConfig for consistent config location detection
 BREW_OFFLINE_DIR = OfflinebrewConfig.config_dir
 
@@ -86,8 +168,11 @@ BREW_OFFLINE_REMOTE_URLMAP = URI.join baseurl, "urlmap.json"
 # Clobber our config, and write the remote config/urlmap to disk
 # locally for the `curl` and `git` shims to read.
 begin
-  config = JSON.parse Net::HTTP.get(BREW_OFFLINE_REMOTE_CONFIG)
+  config_json = Net::HTTP.get(BREW_OFFLINE_REMOTE_CONFIG)
   urlmap = JSON.parse Net::HTTP.get(BREW_OFFLINE_REMOTE_URLMAP)
+
+  config = JSON.parse config_json
+  config = config.transform_keys(&:to_sym) if config.is_a?(Hash)
 
   # The remote config doesn't get to clobber our baseurl.
   config[:baseurl] = baseurl
@@ -95,35 +180,120 @@ rescue StandardError => e
   abort "#{e}: #{e.message} while fetching remote config and urlmap!"
 end
 
+# Handle new tap-based config format with backward compatibility
+taps = if config[:taps]
+         # New format
+         config[:taps]
+       elsif config[:commit]
+         # Old format - convert to new format
+         {
+           "homebrew/homebrew-core" => {
+             "commit" => config[:commit],
+             "type" => "formula",
+           },
+         }
+       else
+         abort "Invalid config format: no taps or commit found"
+       end
+
+# Validate configuration
+validate_configuration(config.merge(taps: taps), is_cask_install)
+
 File.write BREW_OFFLINE_LOCAL_CONFIG, config.to_json
 File.write BREW_OFFLINE_LOCAL_URLMAP, urlmap.to_json
 
 # Each of these flags would cause us to attempt to retrieve
 # an asset that we don't mirror, so we catch them early on
-# and warn the user about them expliciltly.
-INVALID_FLAGS = %w[
+# and warn the user about them explicitly.
+INVALID_FORMULA_FLAGS = %w[
   --force-bottle
   --devel
   --HEAD
 ].freeze
 
-invalid_flags = ARGV & INVALID_FLAGS
+INVALID_CASK_FLAGS = %w[
+  --no-quarantine
+  --language
+  --greedy
+].freeze
 
-abort "One or more invalid flags passed: #{invalid_flags.join(", ")}" if invalid_flags.any?
+if is_cask_install
+  invalid_flags = ARGV & INVALID_CASK_FLAGS
+  if invalid_flags.any?
+    abort "Cask installation with these flags not supported: #{invalid_flags.join(", ")}"
+  end
+else
+  invalid_flags = ARGV & INVALID_FORMULA_FLAGS
+  if invalid_flags.any?
+    abort "One or more invalid flags passed: #{invalid_flags.join(", ")}"
+  end
 
-# This shouldn't be necessary thanks to HOMEBREW_BUILD_FROM_SOURCE, but putting
-# in the ARGV may help us trace where things go wrong.
-ARGV << "--build-from-source"
+  # This shouldn't be necessary thanks to HOMEBREW_BUILD_FROM_SOURCE, but putting
+  # in the ARGV may help us trace where things go wrong.
+  ARGV << "--build-from-source"
+end
 
 # Nuke Homebrew's cache. We don't want to assume that our mirroring server
 # supports resumeable downloads or `git fetch`.
 system "brew", "cleanup", "-s", "--prune=0"
 
-# Reset homebrew/homebrew-core to the commit that we mirrored the package
-# tree at. This prevents us from attempting to install either earlier or later
-# versions of packages/resources than we have mirrored.
-Dir.chdir CORE_TAP_DIR do
-  SafeShell.execute('git', 'checkout', config[:commit], timeout: 30)
+# Reset all mirrored taps to their respective commits
+# This ensures we install the exact versions we mirrored
+puts "Resetting taps to mirrored commits..."
+taps.each do |tap_name, tap_info|
+  tap_commit = tap_info["commit"] || tap_info[:commit]
+  tap_type = tap_info["type"] || tap_info[:type] || "unknown"
+
+  # Determine tap directory
+  tap_dir = case tap_name
+            when "homebrew/homebrew-core"
+              HomebrewPaths.core_tap_path
+            when "homebrew/homebrew-cask"
+              HomebrewPaths.cask_tap_path
+            else
+              # Generic tap path
+              user, repo = tap_name.split("/")
+              HomebrewPaths.tap_path(user, repo)
+            end
+
+  unless Dir.exist?(tap_dir)
+    warn "Warning: Tap not found: #{tap_name} at #{tap_dir}, skipping"
+    next
+  end
+
+  puts "  Resetting #{tap_name} to #{tap_commit[0..7]}..."
+  Dir.chdir tap_dir do
+    # Try to fetch the commit (may not be in local repo)
+    system "git", "fetch", "--quiet", "origin"
+
+    # Checkout the specific commit
+    result = system "git", "checkout", "--quiet", tap_commit
+
+    unless result
+      warn "  Warning: Failed to checkout #{tap_name} at #{tap_commit}"
+      warn "  This may cause installation to fail"
+    end
+  end
 end
 
-system "brew", "install", *ARGV
+puts ""
+
+# Run the appropriate install command
+if is_cask_install
+  # For cask installs
+  # Remove 'cask' from ARGV if it's the first argument
+  args = ARGV.dup
+  args.shift if args.first == "cask"
+
+  puts "Installing cask(s): #{args.join(", ")}"
+  success = system "brew", "install", "--cask", *args
+else
+  # For formula installs
+  puts "Installing formula(e): #{ARGV.join(", ")}"
+  success = system "brew", "install", *ARGV
+end
+
+# Check result
+unless success
+  abort "Installation failed! Check the output above for errors."
+end
