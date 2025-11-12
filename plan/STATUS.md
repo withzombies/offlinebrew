@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-11-12
 **Current Phase**: Phase 2 - Cask Support
-**Overall Progress**: 9/20 tasks complete (45%)
+**Overall Progress**: 10/20 tasks complete (50%)
 
 ---
 
@@ -174,7 +174,7 @@
 
 ## Phase 2: Cask Support
 
-**Status**: 🚧 In Progress (2/4 tasks complete)
+**Status**: 🚧 In Progress (3/4 tasks complete - 75%)
 **Duration**: 16-24 hours (estimated)
 **Started**: 2025-11-12
 
@@ -302,8 +302,56 @@
 
 ---
 
-### Task 2.3: Update brew-offline-install for Casks
-**Status**: ⏳ Not Started
+### Task 2.3: Update brew-offline-install for Casks ✅
+
+**Status**: ✅ Complete
+**Time Spent**: ~2 hours
+**Completed**: 2025-11-12
+**Commit**: 04fbf94
+
+**What was done**:
+- Extended brew-offline-install to support cask installations
+- Added multi-tap support with backward compatibility
+- Created configuration validation function
+- Updated flag handling for formulae vs casks
+- Implemented proper tap reset and restoration
+
+**Key Changes**:
+- **Usage Documentation** (lines 4-18): Comprehensive usage examples
+- **validate_configuration()** (lines 26-77): Validates taps and local installation
+- **Cask Detection** (lines 138-140): Detects --cask flag
+- **Config Parsing** (lines 161-191): Handles new taps format with fallback
+- **Invalid Flags** (lines 196-225): Separate flags for formulae/casks
+- **Multi-Tap Reset** (lines 231-268): Resets all taps to mirrored commits
+- **Install Command** (lines 272-290): Conditional brew install
+- **at_exit Handler** (lines 96-109): Restores all taps to master
+
+**Config Format Support**:
+- New: `{"taps": {"homebrew/homebrew-core": {...}, "homebrew/homebrew-cask": {...}}}`
+- Old: `{"commit": "abc123"}` (backward compatible)
+
+**Features**:
+- ✅ Install formulae from offline mirror
+- ✅ Install casks with --cask flag
+- ✅ Reset both core and cask taps to mirrored commits
+- ✅ Validate mirror has required taps
+- ✅ Clear error messages with fixes
+- ✅ Restore taps to master on exit
+
+**Deliverables**:
+- ✅ Updated brew-offline-install (185 insertions, 15 deletions)
+- ✅ Usage documentation in comments
+- ✅ Configuration validation function
+- ✅ Multi-tap support
+
+**Acceptance Criteria**:
+- ✅ Formula installation preserved
+- ✅ Cask installation with --cask
+- ✅ Both taps reset to mirrored commits
+- ✅ Clear error messages
+- ✅ Backward compatible config
+
+---
 
 ### Task 2.4: Update URL Shims for Casks
 **Status**: ⏳ Not Started
