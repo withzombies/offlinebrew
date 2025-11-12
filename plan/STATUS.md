@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-11-12
 **Current Phase**: Phase 2 - Cask Support
-**Overall Progress**: 8/20 tasks complete (40%)
+**Overall Progress**: 9/20 tasks complete (45%)
 
 ---
 
@@ -174,7 +174,7 @@
 
 ## Phase 2: Cask Support
 
-**Status**: 🚧 In Progress (1/4 tasks complete)
+**Status**: 🚧 In Progress (2/4 tasks complete)
 **Duration**: 16-24 hours (estimated)
 **Started**: 2025-11-12
 
@@ -242,8 +242,65 @@
 
 ---
 
-### Task 2.2: Implement Cask Download Logic
-**Status**: ⏳ Not Started
+### Task 2.2: Implement Cask Download Logic ✅
+
+**Status**: ✅ Complete
+**Time Spent**: ~2 hours
+**Completed**: 2025-11-12
+**Commit**: 4cb10fc
+
+**What was done**:
+- Created ContainerHelpers module for container format handling
+- Created DownloadHelpers module for reliable downloads
+- Enhanced brew-mirror with retry logic and verification
+- Added progress tracking and statistics
+
+**Files Created**:
+- `mirror/lib/container_helpers.rb` (225 lines)
+  - Smart extension detection (DMG, PKG, ZIP, TAR, etc.)
+  - Container verification via magic numbers
+  - Human-readable file sizes
+  - Container type descriptions
+
+- `mirror/lib/download_helpers.rb` (180 lines)
+  - Download retry with exponential backoff
+  - SHA256 checksum verification
+  - Cache detection and size tracking
+  - Download speed formatting
+
+**Files Modified**:
+- `mirror/bin/brew-mirror`
+  - Enhanced cask download section (lines 289-352)
+  - Added retry logic (2 attempts, exponential backoff)
+  - Container and checksum verification
+  - Download timing and progress tracking
+  - Cask mirror statistics (lines 363-380)
+
+**Features**:
+- ✅ Handles multiple container formats (DMG, PKG, ZIP, TAR, etc.)
+- ✅ Retry logic for network failures
+- ✅ Container file verification (magic numbers)
+- ✅ SHA256 checksum verification
+- ✅ Download progress and timing
+- ✅ Statistics: casks processed, files downloaded, total size
+- ✅ Human-readable file sizes (MB, GB)
+
+**Deliverables**:
+- ✅ `mirror/lib/container_helpers.rb`
+- ✅ `mirror/lib/download_helpers.rb`
+- ✅ Enhanced brew-mirror download logic
+- ✅ Progress and statistics output
+
+**Acceptance Criteria**:
+- ✅ Multiple container formats supported
+- ✅ Download retry logic implemented
+- ✅ Container verification works
+- ✅ Progress/size information shown
+- ✅ Statistics printed after mirroring
+- ✅ Corrupted downloads detected
+- ✅ Checksum verification functional
+
+---
 
 ### Task 2.3: Update brew-offline-install for Casks
 **Status**: ⏳ Not Started
