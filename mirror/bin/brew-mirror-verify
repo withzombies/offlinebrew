@@ -173,11 +173,13 @@ class MirrorVerifier
     @stats[:files] = actual_files.count
 
     # Calculate total size
-    result = SafeShell.execute("du", "-sh", mirror_dir.to_s)
-    if result[:success]
-      total_size = result[:stdout].split.first
+    begin
+      result = SafeShell.execute("du", "-sh", mirror_dir.to_s)
+      total_size = result.split.first
       puts "  ✓ Total size: #{total_size}"
       @stats[:size] = total_size
+    rescue SafeShell::ExecutionError, SafeShell::TimeoutError
+      # Ignore if du command fails
     end
 
     puts ""

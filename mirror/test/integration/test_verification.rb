@@ -270,7 +270,8 @@ class TestVerification < Minitest::Test
   end
 
   def run_brew_mirror_verify(script_path, args)
-    cmd = ["brew", "ruby", script_path] + args
+    # Use '--' to separate brew ruby options from script options
+    cmd = ["brew", "ruby", script_path, "--"] + args
     stdout, stderr, status = Open3.capture3(*cmd)
     {
       success: status.success?,

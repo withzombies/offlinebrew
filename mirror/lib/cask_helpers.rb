@@ -34,6 +34,8 @@ module CaskHelpers
     begin
       # Try modern API first
       if defined?(Cask::Cask) && Cask::Cask.respond_to?(:all)
+        # Cask::Cask.all requires HOMEBREW_EVAL_ALL to be set
+        ENV['HOMEBREW_EVAL_ALL'] = '1'
         return Cask::Cask.all
       end
 
