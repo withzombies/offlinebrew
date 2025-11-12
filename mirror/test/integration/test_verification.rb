@@ -31,7 +31,7 @@ class TestVerification < Minitest::Test
       puts "  [1] Creating mirror..."
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq", "-d", tmpdir, "-s", "0.1"]
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--taps", "core"]
       )
 
       assert result[:success], "Mirror creation should succeed: #{result[:stderr]}"
@@ -63,9 +63,10 @@ class TestVerification < Minitest::Test
       puts "\n[Test] Creating mirror with automatic verification..."
 
       # Create mirror with --verify flag
+      # Use --taps core to skip cask mirroring for faster CI tests
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--verify"]
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--taps", "core", "--verify"]
       )
 
       assert result[:success], "Mirror with --verify should succeed: #{result[:stderr]}"
@@ -94,7 +95,7 @@ class TestVerification < Minitest::Test
       # Create mirror
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq", "-d", tmpdir, "-s", "0.1"]
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--taps", "core"]
       )
 
       assert result[:success], "Mirror creation should succeed"
@@ -135,7 +136,7 @@ class TestVerification < Minitest::Test
       # Create mirror
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq", "-d", tmpdir, "-s", "0.1"]
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--taps", "core"]
       )
 
       assert result[:success], "Mirror creation should succeed"
@@ -172,7 +173,7 @@ class TestVerification < Minitest::Test
       # Create mirror
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq", "-d", tmpdir, "-s", "0.1"]
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--taps", "core"]
       )
 
       assert result[:success], "Mirror creation should succeed"
@@ -208,7 +209,7 @@ class TestVerification < Minitest::Test
       # Create mirror (jq doesn't use git, so cache should be empty)
       result = run_brew_mirror(
         brew_mirror_path,
-        ["-f", "jq", "-d", tmpdir, "-s", "0.1"]
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1", "--taps", "core"]
       )
 
       assert result[:success], "Mirror creation should succeed"
