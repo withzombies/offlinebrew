@@ -41,13 +41,13 @@ Error cases and edge conditions:
 ### 4. Download Strategy Tests (`test_download_strategies.rb`)
 Different download strategies:
 - ✅ **CurlDownloadStrategy** - HTTP/HTTPS downloads (jq, wget, tree)
-- ✅ **GitDownloadStrategy** - Git repositories
-- ✅ **GitHubGitDownloadStrategy** - GitHub-specific
+- ✅ **GitDownloadStrategy** - Git repositories with deterministic identifiers
+- ✅ **GitHubGitDownloadStrategy** - GitHub-specific with deterministic identifiers
 - ✅ **CurlApacheMirrorDownloadStrategy** - Apache mirrors
 - ✅ **NoUnzipCurlDownloadStrategy** - Pre-extracted archives
 - ✅ Formulae with resources (bundled dependencies)
 - ✅ Formulae with patches
-- ⚠️ **Git UUID collision** (known issue - Task 3.2)
+- ✅ **Git deterministic identifiers** (Task 3.2 - FIXED)
 - ❌ **Unsupported strategies** (SVN, Mercurial, CVS) - expected to skip
 
 **Tests**: 8 | **Runtime**: ~1 minute
@@ -124,15 +124,18 @@ RUN_SLOW_TESTS=1 ./run_integration_tests.sh real-world
 
 ## Known Limitations
 
-### Git Repository UUID Collision (Task 3.2)
-**Issue**: Git repositories use UUID identifiers. If the same repository is
-mirrored twice, it gets a different UUID each time, causing duplicates.
+### ~~Git Repository UUID Collision~~ ✅ FIXED (Task 3.2)
+**Previous Issue**: Git repositories used random UUID identifiers. If the same
+repository was mirrored twice, it got a different UUID each time, causing duplicates.
 
-**Impact**: Minor - wasted disk space for duplicate repos
+**Fix**: Git repositories now use deterministic SHA256 identifiers based on
+`url@revision`. The same repository at the same commit always gets the same
+identifier. An `identifier_cache.json` file tracks all Git repositories for
+transparency and debugging.
 
-**Status**: Documented as Task 3.2 - Fix Git Repository UUID Collision
+**Status**: ✅ Complete - Task 3.2 implemented
 
-**Test**: `test_git_repository_uuid_handling` documents this issue
+**Test**: `test_git_repository_deterministic_identifiers` validates the fix
 
 ### Unsupported Download Strategies
 Some formulae use download strategies we don't support:

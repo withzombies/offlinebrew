@@ -45,16 +45,41 @@ BREW_OFFLINE_DOWNLOAD_STRATEGIES = [
   GitHubGitDownloadStrategy,
 ].freeze
 
-# Given a download strategy, produce a sensible and probably unique identifier.
-def sensible_identifier(strategy, checksum = nil)
+# Resolve the actual Git commit for a repository.
+# This ensures we get the real commit hash, not just "master" or "HEAD".
+def resolve_git_revision(downloader)
+  return "HEAD" unless downloader.is_a?(GitDownloadStrategy) ||
+                       downloader.is_a?(GitHubGitDownloadStrategy)
+
+  # Try to get the resolved reference (actual commit hash)
+  if downloader.respond_to?(:resolved_ref) && downloader.resolved_ref
+    return downloader.resolved_ref
+  end
+
+  # Try to get the ref (branch name, tag, or commit)
+  if downloader.respond_to?(:ref) && downloader.ref
+    return downloader.ref
+  end
+
+  # Default to HEAD if we can't determine the revision
+  "HEAD"
+end
+
+# Given a download strategy, produce a sensible and deterministic identifier.
+def sensible_identifier(strategy, checksum = nil, url = nil)
   case strategy
   when GitDownloadStrategy, GitHubGitDownloadStrategy
-    # Git/GitHub resources don't have checksums and Homebrew doesn't make it easy
-    # to retrieve their revision/last commit hash, so we just create a unique
-    # identifier for them.
-    # TODO(ww): We should cache or record the UUID we create here, so that we don't
-    # end up mirroring the same revision of a `git` repository multiple times.
-    SecureRandom.uuid
+    # Git/GitHub resources don't have checksums, so we create a deterministic
+    # identifier based on the URL and revision. This prevents duplicate mirrors
+    # of the same repository at the same commit.
+    require "digest"
+
+    # Get the revision/commit being checked out
+    revision = resolve_git_revision(strategy)
+
+    # Create deterministic hash: SHA256(url + revision)
+    # This ensures the same repo at the same commit always gets the same identifier
+    Digest::SHA256.hexdigest("#{url}@#{revision}")
   else
     checksum.to_s
   end
@@ -164,6 +189,15 @@ File.write File.join(options[:directory], "config.json"), config.to_json
 # Initialize urlmap (will be empty in config-only mode)
 urlmap = {}
 
+# Load existing identifier cache if it exists
+# This prevents duplicate mirroring of the same Git repository at the same commit
+identifier_cache_file = File.join(options[:directory], "identifier_cache.json")
+identifier_cache = if File.exist?(identifier_cache_file)
+                     JSON.parse(File.read(identifier_cache_file))
+                   else
+                     {}
+                   end
+
 # In config-only mode, write empty urlmap and exit early
 if options[:config_only]
   File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
@@ -234,13 +268,16 @@ options[:iterator].each do |formula|
 
   resources << MirrorResource.new(formula.stable,
                                   sensible_identifier(formula.stable.downloader,
-                                                      formula.stable.checksum),
+                                                      formula.stable.checksum,
+                                                      formula.stable.url),
                                   formula.stable.downloader,
                                   formula.stable.url)
 
   formula.stable.resources.each do |_name, res|
     resources << MirrorResource.new(res,
-                                    sensible_identifier(res.downloader, res.checksum),
+                                    sensible_identifier(res.downloader,
+                                                        res.checksum,
+                                                        res.url),
                                     res.downloader,
                                     res.url)
   end
@@ -248,7 +285,8 @@ options[:iterator].each do |formula|
   formula.stable.patches.select(&:external?).each do |patch|
     resources << MirrorResource.new(patch,
                                     sensible_identifier(patch.resource.downloader,
-                                                        patch.resource.checksum),
+                                                        patch.resource.checksum,
+                                                        patch.url),
                                     patch.resource.downloader,
                                     patch.url)
   end
@@ -293,6 +331,18 @@ options[:iterator].each do |formula|
       FileUtils.mv old_location.to_s, new_location.to_s, force: true
       prep_location! res.downloader, new_location.to_s
       ohai "\t#{old_location} -> #{new_location}"
+    end
+
+    # Track Git repositories in identifier cache for idempotent mirroring
+    if res.downloader.is_a?(GitDownloadStrategy) || res.downloader.is_a?(GitHubGitDownloadStrategy)
+      revision = resolve_git_revision(res.downloader)
+      cache_key = "#{res.url}@#{revision}"
+      identifier_cache[cache_key] = {
+        "identifier" => res.identifier,
+        "url" => res.url.to_s,
+        "revision" => revision,
+        "filename" => new_location.basename.to_s,
+      }
     end
 
     # Add to the urlmap (with URL variants for better matching)
@@ -497,3 +547,7 @@ end
 
 # Write urlmap.json
 File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
+
+# Write identifier cache for Git repository tracking
+# This tracks all Git identifiers to prevent duplicates on subsequent mirror runs
+File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
