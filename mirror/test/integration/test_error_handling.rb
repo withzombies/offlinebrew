@@ -5,6 +5,7 @@ require_relative "../test_helper"
 require "tmpdir"
 require "tempfile"
 require "json"
+require "securerandom"
 
 # TestErrorHandling: Integration tests for error cases and edge conditions
 #
