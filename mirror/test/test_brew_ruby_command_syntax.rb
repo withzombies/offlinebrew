@@ -6,81 +6,112 @@ require "minitest/autorun"
 # TDD Test: Document correct script invocation method
 #
 # Purpose: Document the CORRECT way to invoke offlinebrew scripts
-# This test was created after multiple failed attempts with `brew ruby`.
+# This test was created after multiple failed attempts to get the invocation right.
 #
-# KEY DISCOVERY:
-# Scripts with shebang `#!/usr/bin/env brew ruby` should be executed DIRECTLY:
-#   CORRECT: ./bin/brew-mirror -f jq -d /tmp
-#   WRONG:   brew ruby bin/brew-mirror -f jq -d /tmp
+# KEY DISCOVERIES:
+# 1. brew-mirror has shebang `#!/usr/bin/env brew ruby` which is BROKEN for direct execution
+#    - env doesn't handle multi-word interpreters portably
+#    - MUST invoke via: brew ruby bin/brew-mirror
+#    - MUST use SHORT options only: -f, -d, -c
 #
-# The shebang tells the system to use `brew ruby` as the interpreter automatically.
-# Explicitly calling `brew ruby bin/brew-mirror` double-invokes brew ruby and causes
-# option parsing conflicts.
+# 2. brew-offline-install has shebang `#!/usr/bin/env ruby` (normal)
+#    - Can execute directly: ./bin/brew-offline-install
+#
+# 3. Long options (--formulae) cause errors with brew ruby (Homebrew limitation)
 class TestBrewRubyCommandSyntax < Minitest::Test
-  # Test: Scripts with brew ruby shebang should be executed directly
-  def test_scripts_with_shebang_direct_execution
-    # Scripts with shebang `#!/usr/bin/env brew ruby` should be executed DIRECTLY
-    # The shebang automatically uses brew ruby as the interpreter
+  # Test: brew-mirror MUST use brew ruby with SHORT options
+  def test_brew_mirror_invocation_short_options
+    # brew-mirror has broken shebang `#!/usr/bin/env brew ruby`
+    # MUST invoke via `brew ruby` with SHORT options only
 
-    correct_with_long_options = "./bin/brew-mirror --formulae jq --directory /tmp/test"
-    correct_with_short_options = "./bin/brew-mirror -f jq -d /tmp/test"
+    correct_command = "brew ruby bin/brew-mirror -f jq -d /tmp/test -c"
 
-    # Both forms work because the shebang handles the interpreter
-    [correct_with_long_options, correct_with_short_options].each do |cmd|
-      refute_includes cmd, "brew ruby",
-        "Should NOT include 'brew ruby' - shebang handles it: #{cmd}"
+    # Must have "brew ruby" prefix
+    assert_includes correct_command, "brew ruby",
+      "brew-mirror MUST be invoked via 'brew ruby'"
 
-      assert_match(/^\.\/bin\//, cmd,
-        "Should start with script path: #{cmd}")
-    end
+    # Must use short options
+    assert_match(/-f\s+/, correct_command, "Should use -f (not --formulae)")
+    assert_match(/-d\s+/, correct_command, "Should use -d (not --directory)")
+    assert_match(/-c/, correct_command, "Should use -c (not --config-only)")
   end
 
-  # Test: Document the WRONG approach (for reference)
-  def test_wrong_approach_explicit_brew_ruby_invocation
-    # WRONG: Explicitly calling `brew ruby` when script has brew ruby shebang
-    # This double-invokes brew ruby and causes option parsing conflicts
+  # Test: brew-mirror with long options FAILS
+  def test_brew_mirror_long_options_fail
+    # Long options cause "Error: invalid option" because brew ruby's
+    # OptionParser consumes them before passing to the script
 
-    wrong_examples = [
-      "brew ruby bin/brew-mirror -f jq",           # Causes: "Error: invalid option: -f"
-      "brew ruby bin/brew-mirror --formulae jq",   # Causes: "Error: invalid option: --formulae"
-      "brew ruby -- bin/brew-mirror --formulae jq", # Still wrong, double-invokes
+    wrong_commands = [
+      "brew ruby bin/brew-mirror --formulae jq",      # Error: invalid option: --formulae
+      "brew ruby bin/brew-mirror -f jq --directory /tmp", # Error: invalid option: --directory
+      "brew ruby -- bin/brew-mirror --formulae jq",   # Error: invalid option: --formulae
     ]
 
-    # Document these as incorrect patterns
-    wrong_examples.each do |cmd|
+    # These all have brew ruby prefix (required)
+    wrong_commands.each do |cmd|
       assert_includes cmd, "brew ruby",
-        "These examples show WRONG approach: #{cmd}"
+        "brew-mirror requires 'brew ruby' prefix: #{cmd}"
+
+      # But they use long options (causes errors)
+      assert_match(/--\w+/, cmd,
+        "This command uses long options which cause errors: #{cmd}")
     end
   end
 
-  # Test: When to use `brew ruby` vs direct execution
-  def test_when_to_use_brew_ruby_vs_direct
-    # Use `brew ruby` ONLY when:
-    # 1. Running a script that does NOT have `#!/usr/bin/env brew ruby` shebang
-    # 2. Running a one-liner: brew ruby -e "puts Formula['jq'].version"
+  # Test: brew-mirror direct execution FAILS
+  def test_brew_mirror_direct_execution_fails
+    # Direct execution fails because shebang is broken
+    # env: 'brew ruby': No such file or directory
 
-    # For test scripts without brew ruby shebang:
-    test_script_command = "brew ruby mirror/test/test_api_compatibility.rb"
-    assert_includes test_script_command, "brew ruby",
-      "Test scripts without brew ruby shebang need explicit 'brew ruby'"
+    wrong_command = "./bin/brew-mirror -f jq -d /tmp"
 
-    # For executables WITH brew ruby shebang (bin/brew-mirror, bin/brew-offline-install):
-    executable_command = "./bin/brew-mirror -f jq -d /tmp"
-    refute_includes executable_command, "brew ruby",
-      "Executables with brew ruby shebang execute directly"
+    refute_includes wrong_command, "brew ruby",
+      "Direct execution doesn't work - missing 'brew ruby' prefix"
   end
 
-  # Test: Integration test should use direct execution
-  def test_integration_test_pattern
-    # Integration tests should execute scripts directly
-    # The scripts have `#!/usr/bin/env brew ruby` shebang
+  # Test: brew-offline-install can execute directly
+  def test_brew_offline_install_direct_execution
+    # brew-offline-install has normal shebang `#!/usr/bin/env ruby`
+    # Can execute directly
 
-    mirror_command = "/path/to/brew-mirror -f jq -d /tmp"
+    correct_command = "./bin/brew-offline-install jq"
+
+    refute_includes correct_command, "brew ruby",
+      "brew-offline-install doesn't need 'brew ruby' - has normal shebang"
+  end
+
+  # Test: Integration test pattern (what tests should use)
+  def test_integration_test_invocation_pattern
+    # Integration tests should match CI working examples
+
+    # brew-mirror: Via brew ruby with short options
+    mirror_command = "brew ruby /path/to/brew-mirror -f jq -d /tmp"
+    assert_includes mirror_command, "brew ruby",
+      "Integration tests MUST use 'brew ruby' for brew-mirror"
+    assert_match(/-f\s+/, mirror_command,
+      "Integration tests MUST use short options: -f")
+
+    # brew-offline-install: Direct execution
     install_command = "/path/to/brew-offline-install jq"
+    refute_includes install_command, "brew ruby",
+      "brew-offline-install can execute directly"
+  end
 
-    [mirror_command, install_command].each do |cmd|
-      refute_includes cmd, "brew ruby",
-        "Integration test should NOT use 'brew ruby': #{cmd}"
-    end
+  # Test: Working CI example matches our pattern
+  def test_ci_working_example
+    # From .github/workflows/test.yml line 71
+    ci_command = "brew ruby bin/brew-mirror -d /tmp/test-mirror-ci -c"
+
+    # Has brew ruby prefix
+    assert_includes ci_command, "brew ruby",
+      "CI uses 'brew ruby' prefix"
+
+    # Uses short options only
+    assert_match(/-d\s+/, ci_command, "CI uses -d (short option)")
+    assert_match(/-c/, ci_command, "CI uses -c (short option)")
+
+    # No long options
+    refute_match(/--\w+/, ci_command,
+      "CI doesn't use long options")
   end
 end

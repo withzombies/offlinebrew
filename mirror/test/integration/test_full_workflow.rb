@@ -132,7 +132,7 @@ class TestFullWorkflow < Minitest::Test
       puts "\n[Test] Running brew-mirror --config-only..."
 
       result = run_command(
-        "#{brew_mirror_path} -f #{TEST_FORMULA} -c -d #{tmpdir}",
+        "brew ruby #{brew_mirror_path} -f #{TEST_FORMULA} -c -d #{tmpdir}",
         env: {}
       )
 
@@ -244,7 +244,7 @@ class TestFullWorkflow < Minitest::Test
     puts "  - Mirror directory: #{tmpdir}"
 
     result = run_command(
-      "#{brew_mirror_path} -f #{formula} -d #{tmpdir}",
+      "brew ruby #{brew_mirror_path} -f #{formula} -d #{tmpdir}",
       env: {}
     )
 

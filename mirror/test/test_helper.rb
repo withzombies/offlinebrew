@@ -114,7 +114,10 @@ module TestHelper
   def run_command(command, env: {})
     require "open3"
 
-    stdout, stderr, status = Open3.capture3(env, command)
+    # Merge custom env with current environment (don't replace it)
+    merged_env = ENV.to_h.merge(env)
+
+    stdout, stderr, status = Open3.capture3(merged_env, command)
 
     {
       stdout: stdout,

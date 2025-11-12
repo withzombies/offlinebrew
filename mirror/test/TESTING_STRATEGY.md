@@ -43,31 +43,44 @@ mirror/test/
 
 ## Executable Invocation: Critical Discovery
 
-**IMPORTANT:** The executables (`brew-mirror`, `brew-offline-install`) have shebang `#!/usr/bin/env brew ruby` which means they should be executed **DIRECTLY**, not via `brew ruby`:
+**IMPORTANT:** The executables have different shebangs and require different invocation methods:
+
+### brew-mirror
+- Shebang: `#!/usr/bin/env brew ruby` (broken for direct execution)
+- **MUST** invoke via: `brew ruby bin/brew-mirror`
+- **MUST** use SHORT options only: `-f`, `-d`, `-c`
+- **CANNOT** use long options: `--formulae`, `--directory`, `--config-only`
 
 ```bash
-# ✓ CORRECT: Direct execution (shebang handles brew ruby)
-./bin/brew-mirror -f jq -d /tmp/mirror
-./bin/brew-offline-install jq
+# ✓ CORRECT: Via brew ruby with SHORT options
+brew ruby bin/brew-mirror -f jq -d /tmp/mirror -c
 
-# ✗ WRONG: Explicit brew ruby invocation (double-invokes, causes errors)
-brew ruby bin/brew-mirror -f jq           # Error: invalid option: -f
-brew ruby -- bin/brew-mirror --formulae jq # Error: invalid option: --formulae
+# ✗ WRONG: Direct execution (shebang is broken)
+./bin/brew-mirror -f jq              # env: 'brew ruby': No such file or directory
+
+# ✗ WRONG: Long options cause parsing errors
+brew ruby bin/brew-mirror --formulae jq   # Error: invalid option: --formulae
 ```
 
-**Why This Matters:**
-- The shebang automatically uses `brew ruby` as the interpreter
-- Explicitly calling `brew ruby bin/brew-mirror` double-invokes brew ruby
-- This causes option parsing conflicts where brew ruby tries to parse the script's options
-- Resulted in multiple CI failures before discovery
+### brew-offline-install
+- Shebang: `#!/usr/bin/env ruby` (normal Ruby script)
+- Can execute directly: `./bin/brew-offline-install jq`
+- Loads Homebrew libraries at runtime
 
-**When to Use `brew ruby`:**
-- Running test scripts WITHOUT brew ruby shebang: `brew ruby test/test_api.rb`
-- Running one-liners: `brew ruby -e "puts Formula['jq'].version"`
+**Why brew-mirror Shebang Is Broken:**
+- `#!/usr/bin/env brew ruby` tries to find a program named "brew ruby" (as one word)
+- `env` doesn't handle multi-word interpreters portably
+- The `-S` flag (`#!/usr/bin/env -S brew ruby`) would work but isn't portable
 
-**When NOT to Use `brew ruby`:**
-- Running executables WITH brew ruby shebang (bin/brew-mirror, bin/brew-offline-install)
-- Integration tests that execute the actual binaries
+**Why SHORT Options Only:**
+- `brew ruby` uses OptionParser which consumes long options before passing to script
+- Short options are passed through correctly
+- This is a Homebrew limitation, not our bug
+
+**Working Example from CI:**
+```yaml
+brew ruby bin/brew-mirror -d /tmp/test-mirror-ci -c  # ✓ Works
+```
 
 See `test/test_brew_ruby_command_syntax.rb` for TDD tests documenting this behavior.
 
