@@ -1,8 +1,8 @@
 # Implementation Status
 
-**Last Updated**: 2025-11-11
+**Last Updated**: 2025-11-12
 **Current Phase**: Phase 2 - Cask Support
-**Overall Progress**: 7/20 tasks complete (35%)
+**Overall Progress**: 8/20 tasks complete (40%)
 
 ---
 
@@ -174,11 +174,73 @@
 
 ## Phase 2: Cask Support
 
-**Status**: ⏳ Not Started
+**Status**: 🚧 In Progress (1/4 tasks complete)
 **Duration**: 16-24 hours (estimated)
+**Started**: 2025-11-12
 
-### Task 2.1: Add Homebrew-Cask Tap Mirroring
-**Status**: ⏳ Not Started
+### Task 2.1: Add Homebrew-Cask Tap Mirroring ✅
+
+**Status**: ✅ Complete
+**Time Spent**: ~2 hours
+**Completed**: 2025-11-12
+**Commit**: 1afc1f2
+
+**What was done**:
+- Extended brew-mirror to support cask mirroring
+- Created CaskHelpers module for safe cask API interaction
+- Updated config.json format to include taps hash
+- Added --casks CLI option for specific cask selection
+- Created comprehensive cask API test suite
+
+**Files Created**:
+- `mirror/lib/cask_helpers.rb` (120 lines)
+  - Safely loads all casks with multiple fallback methods
+  - Handles API differences across Homebrew versions
+  - Provides helper methods: has_url?, checksum()
+
+- `mirror/test/test_cask_api.rb` (180 lines)
+  - Tests cask tap existence and commit hash
+  - Tests cask API availability
+  - Tests loading specific and multiple casks
+  - Validates cask instance methods
+
+**Files Modified**:
+- `mirror/bin/brew-mirror`
+  - Added cask iteration logic (90 lines, lines 239-328)
+  - Updated config generation to support taps hash
+  - Added --casks CLI option
+  - Maintains backward compatibility
+
+**Config Format**:
+- New `taps` hash with separate commits for core and cask
+- Legacy `commit` field preserved for backward compatibility
+- Tracks tap type (formula vs cask) for each tap
+
+**Features**:
+- ✅ Mirrors casks alongside formulae
+- ✅ Supports --casks option for specific casks
+- ✅ Downloads DMG, PKG, ZIP files
+- ✅ Adds cask URLs to urlmap.json
+- ✅ Gracefully handles missing cask tap
+- ✅ Tracks separate commits for each tap
+
+**Deliverables**:
+- ✅ `mirror/lib/cask_helpers.rb`
+- ✅ `mirror/test/test_cask_api.rb`
+- ✅ Updated brew-mirror with cask support
+- ✅ Config format supports multiple taps
+- ✅ CLI option for cask selection
+
+**Acceptance Criteria**:
+- ✅ Config.json includes taps hash
+- ✅ Can mirror specific casks
+- ✅ Cask files downloaded to mirror directory
+- ✅ urlmap.json includes cask URLs
+- ✅ Graceful fallback when cask tap missing
+- ✅ Test script validates cask API
+- ✅ Backward compatible config format
+
+---
 
 ### Task 2.2: Implement Cask Download Logic
 **Status**: ⏳ Not Started
