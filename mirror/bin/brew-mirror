@@ -154,9 +154,14 @@ config[:baseurl] = options[:baseurl]
 
 File.write File.join(options[:directory], "config.json"), config.to_json
 
-exit if options[:config_only]
-
+# Initialize urlmap (will be empty in config-only mode)
 urlmap = {}
+
+# In config-only mode, write empty urlmap and exit early
+if options[:config_only]
+  File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
+  exit
+end
 
 # Finally, fetch the (stable) resources for each formula in homebrew-core.
 options[:iterator].each do |formula|
