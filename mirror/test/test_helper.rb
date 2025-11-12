@@ -151,10 +151,12 @@ module TestHelper
 
     Tempfile.create(["brew-mirror-wrapper", ".rb"]) do |f|
       f.write(<<~RUBY)
-        # Set ARGV before loading brew-mirror
+        # Set ARGV before executing brew-mirror
         ARGV.replace(#{args.inspect})
-        # Load brew-mirror script
-        load #{brew_mirror_path.inspect}
+
+        # Read and eval brew-mirror in the current context (which has Homebrew methods)
+        # Using eval instead of load ensures the code runs in this script's context
+        eval(File.read(#{brew_mirror_path.inspect}), binding, #{brew_mirror_path.inspect}, 1)
       RUBY
       f.flush
 
