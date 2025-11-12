@@ -12,6 +12,7 @@ require_relative "../lib/safe_shell"
 require_relative "../lib/cask_helpers"
 require_relative "../lib/container_helpers"
 require_relative "../lib/download_helpers"
+require_relative "../lib/url_helpers"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
@@ -231,8 +232,13 @@ options[:iterator].each do |formula|
       ohai "\t#{old_location} -> #{new_location}"
     end
 
-    # Add to the urlmap regardless.
-    urlmap[res.url] = new_location.basename
+    # Add to the urlmap (with URL variants for better matching)
+    url_str = res.url.to_s
+    urlmap[url_str] = new_location.basename
+
+    # Also add clean URL variant (without query/fragment) for easier matching
+    clean_url = URLHelpers.clean_url(url_str)
+    urlmap[clean_url] = new_location.basename unless clean_url == url_str
   end
 
   sleep options[:sleep]
@@ -296,8 +302,13 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
         ohai "\tAlready mirrored: #{ContainerHelpers.human_size(new_location)}"
         ohai "\t  Type: #{ContainerHelpers.container_type(new_location)}"
 
-        # Add to urlmap
+        # Add to urlmap (with URL variants for better matching)
         urlmap[url_str] = new_location.basename.to_s
+
+        # Also add clean URL variant (without query/fragment) for easier matching
+        clean_url = URLHelpers.clean_url(url_str)
+        urlmap[clean_url] = new_location.basename.to_s unless clean_url == url_str
+
         next  # Skip to next cask
       end
 
@@ -348,8 +359,12 @@ if CaskHelpers.cask_api_available? && HomebrewPaths.cask_tap_exists?
         end
       end
 
-      # Add to urlmap
+      # Add to urlmap (with URL variants for better matching)
       urlmap[url_str] = new_location.basename.to_s
+
+      # Also add clean URL variant (without query/fragment) for easier matching
+      clean_url = URLHelpers.clean_url(url_str)
+      urlmap[clean_url] = new_location.basename.to_s unless clean_url == url_str
 
     rescue StandardError => e
       opoo "Failed to mirror cask #{cask.token}: #{e.message}"
