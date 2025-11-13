@@ -17,21 +17,59 @@ require_relative "safe_shell"
 #   TapManager.tap_commit("homebrew/homebrew-cask")
 #   TapManager.tap_type("homebrew/homebrew-cask-fonts")
 module TapManager
+  # Expand shorthand tap names to full format
+  #
+  # @param tap_name [String] Tap name (full or shorthand)
+  # @return [String] Expanded tap name in "user/repo" format
+  #
+  # @example Expand shorthand names
+  #   TapManager.expand_tap_name("core")  # => "homebrew/homebrew-core"
+  #   TapManager.expand_tap_name("cask")  # => "homebrew/homebrew-cask"
+  #   TapManager.expand_tap_name("homebrew/homebrew-core")  # => "homebrew/homebrew-core"
+  def self.expand_tap_name(tap_name)
+    # Already in full format
+    return tap_name if tap_name.include?("/")
+
+    # Expand common shorthands
+    case tap_name.downcase
+    when "core"
+      "homebrew/homebrew-core"
+    when "cask", "casks"
+      "homebrew/homebrew-cask"
+    when "versions"
+      "homebrew/homebrew-cask-versions"
+    when "fonts"
+      "homebrew/homebrew-cask-fonts"
+    when "drivers"
+      "homebrew/homebrew-cask-drivers"
+    else
+      # Assume it's a homebrew tap if no slash
+      "homebrew/homebrew-#{tap_name}"
+    end
+  end
+
   # Parse tap name into user/repo components
   #
-  # @param tap_name [String] Tap name in format "user/repo"
+  # @param tap_name [String] Tap name in format "user/repo" or shorthand
   # @return [Hash] Hash with :user and :repo keys
   # @raise [SystemExit] If tap name format is invalid
   #
   # @example Parse a tap name
   #   parsed = TapManager.parse_tap_name("homebrew/homebrew-core")
   #   # => {:user => "homebrew", :repo => "homebrew-core"}
+  #
+  # @example Parse shorthand
+  #   parsed = TapManager.parse_tap_name("core")
+  #   # => {:user => "homebrew", :repo => "homebrew-core"}
   def self.parse_tap_name(tap_name)
-    parts = tap_name.split("/")
+    # Expand shorthand first
+    expanded = expand_tap_name(tap_name)
+
+    parts = expanded.split("/")
     if parts.length == 2
       { user: parts[0], repo: parts[1] }
     else
-      abort "Invalid tap name: #{tap_name}. Expected format: user/repo"
+      abort "Invalid tap name: #{tap_name}. Expected format: user/repo or shorthand (core, cask, etc.)"
     end
   end
 

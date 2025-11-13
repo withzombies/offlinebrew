@@ -127,6 +127,8 @@ options = {
   casks: nil,
   taps: ["homebrew/homebrew-core", "homebrew/homebrew-cask"],  # Default taps
   verify: false,
+  update_mode: false,
+  prune_old: false,
 }
 
 OptionParser.new do |parser|
@@ -159,6 +161,14 @@ OptionParser.new do |parser|
   parser.on "--verify", "verify mirror integrity after creation" do
     options[:verify] = true
   end
+
+  parser.on "--update", "update existing mirror (skip unchanged packages)" do
+    options[:update_mode] = true
+  end
+
+  parser.on "--prune", "remove old versions when updating" do
+    options[:prune_old] = true
+  end
 end.parse!
 
 abort "Fatal: the output directory must exist" unless Dir.exist?(options[:directory])
@@ -172,25 +182,28 @@ config[:taps] = {}
 
 # Process each configured tap
 options[:taps].each do |tap_name|
-  unless TapManager.tap_installed?(tap_name)
-    opoo "Tap not installed: #{tap_name}, skipping"
+  # Expand shorthand tap names (e.g., "core" -> "homebrew/homebrew-core")
+  expanded_tap_name = TapManager.expand_tap_name(tap_name)
+
+  unless TapManager.tap_installed?(expanded_tap_name)
+    opoo "Tap not installed: #{expanded_tap_name}, skipping"
     next
   end
 
-  commit = TapManager.tap_commit(tap_name)
+  commit = TapManager.tap_commit(expanded_tap_name)
   unless commit
-    opoo "Could not get commit for #{tap_name}, skipping"
+    opoo "Could not get commit for #{expanded_tap_name}, skipping"
     next
   end
 
-  tap_type = TapManager.tap_type(tap_name)
+  tap_type = TapManager.tap_type(expanded_tap_name)
 
-  config[:taps][tap_name] = {
+  config[:taps][expanded_tap_name] = {
     "commit" => commit,
     "type" => tap_type,
   }
 
-  ohai "Will mirror #{tap_name} (#{tap_type}) at commit #{commit[0..7]}"
+  ohai "Will mirror #{expanded_tap_name} (#{tap_type}) at commit #{commit[0..7]}"
 end
 
 # Ensure at least one tap configured
@@ -217,6 +230,35 @@ identifier_cache = if File.exist?(identifier_cache_file)
                    else
                      {}
                    end
+
+# Initialize or load manifest for documenting the mirror contents
+existing_manifest = nil
+if options[:update_mode]
+  manifest_file = File.join(options[:directory], "manifest.json")
+  if File.exist?(manifest_file)
+    existing_manifest = JSON.parse(File.read(manifest_file), symbolize_names: true)
+    ohai "Loading existing manifest for incremental update"
+    ohai "  Previous mirror created: #{existing_manifest[:created_at]}"
+    ohai "  Previous formulae: #{existing_manifest[:formulae].count}"
+    ohai "  Previous casks: #{existing_manifest[:casks].count}"
+  else
+    opoo "No existing manifest found, performing full mirror"
+    options[:update_mode] = false  # Fallback to full mirror
+  end
+end
+
+manifest = {
+  created_at: Time.now.iso8601,
+  taps: {},
+  statistics: {
+    total_formulae: 0,
+    total_casks: 0,
+    total_files: 0,
+    total_size_bytes: 0,
+  },
+  formulae: existing_manifest ? existing_manifest[:formulae].dup : [],
+  casks: existing_manifest ? existing_manifest[:casks].dup : [],
+}
 
 # In config-only mode, write empty urlmap and exit early
 if options[:config_only]
@@ -248,6 +290,85 @@ def normalize_tap_name(tap_name)
   end
 end
 
+# Generate HTML report from manifest
+def generate_html_report(manifest, output_file)
+  html = <<~HTML
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Offlinebrew Mirror Manifest</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #f90; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; }
+        th { background: #f2f2f2; font-weight: 600; }
+        tr:hover { background: #f9f9f9; }
+        .stats { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; margin: 20px 0; border-radius: 8px; }
+        .stats h2 { color: white; margin-top: 0; }
+        .stats p { margin: 8px 0; font-size: 16px; }
+        .stats strong { font-weight: 600; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: "Monaco", "Courier New", monospace; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🍺 Offlinebrew Mirror Manifest</h1>
+
+        <div class="stats">
+          <h2>📊 Statistics</h2>
+          <p><strong>Created:</strong> #{manifest[:created_at]}</p>
+          <p><strong>Formulae:</strong> #{manifest[:statistics][:total_formulae]}</p>
+          <p><strong>Casks:</strong> #{manifest[:statistics][:total_casks]}</p>
+          <p><strong>Total Files:</strong> #{manifest[:statistics][:total_files]}</p>
+          <p><strong>Total Size:</strong> #{(manifest[:statistics][:total_size_bytes] / 1024.0 / 1024.0 / 1024.0).round(2)} GB</p>
+        </div>
+
+        <h2>📦 Taps</h2>
+        <table>
+          <tr><th>Tap</th><th>Commit</th><th>Type</th></tr>
+  HTML
+
+  manifest[:taps].each do |tap, info|
+    html += "        <tr><td><code>#{tap}</code></td><td><code>#{info["commit"][0..7]}</code></td><td>#{info["type"]}</td></tr>\n"
+  end
+
+  html += <<~HTML
+        </table>
+
+        <h2>⚗️  Formulae (#{manifest[:formulae].count})</h2>
+        <table>
+          <tr><th>Name</th><th>Version</th><th>Tap</th></tr>
+  HTML
+
+  manifest[:formulae].each do |formula|
+    html += "        <tr><td><code>#{formula[:name]}</code></td><td>#{formula[:version]}</td><td><code>#{formula[:tap]}</code></td></tr>\n"
+  end
+
+  html += <<~HTML
+        </table>
+
+        <h2>📦 Casks (#{manifest[:casks].count})</h2>
+        <table>
+          <tr><th>Token</th><th>Name</th><th>Version</th></tr>
+  HTML
+
+  manifest[:casks].each do |cask|
+    html += "        <tr><td><code>#{cask[:token]}</code></td><td>#{cask[:name]}</td><td>#{cask[:version]}</td></tr>\n"
+  end
+
+  html += <<~HTML
+        </table>
+      </div>
+    </body>
+    </html>
+  HTML
+
+  File.write(output_file, html)
+end
+
 # Finally, fetch the (stable) resources for each formula from configured taps.
 options[:iterator].each do |formula|
   # Skip formulae that aren't in configured taps
@@ -276,6 +397,30 @@ options[:iterator].each do |formula|
   end
 
   next unless config[:taps].key?(formula_tap_name)
+
+  # In update mode, skip formulae that haven't changed
+  if existing_manifest && options[:update_mode]
+    already_mirrored = existing_manifest[:formulae].any? do |f|
+      f[:name] == formula.name && f[:version] == formula.version.to_s
+    end
+
+    if already_mirrored
+      ohai "#{formula.name} (#{formula.version}) already in mirror, skipping"
+      # Keep it in the new manifest
+      unless manifest[:formulae].any? { |f| f[:name] == formula.name }
+        manifest[:formulae] << {
+          name: formula.name,
+          version: formula.version.to_s,
+          url: formula.stable.url,
+          tap: formula_tap_name,
+        }
+        manifest[:statistics][:total_formulae] += 1
+      end
+      next
+    else
+      ohai "#{formula.name} (#{formula.version}) is new or updated, downloading"
+    end
+  end
 
   ohai "Collecting resources for #{formula.name}..."
 
@@ -374,16 +519,30 @@ options[:iterator].each do |formula|
     urlmap[clean_url] = new_location.basename unless clean_url == url_str
   end
 
+  # Track formula in manifest
+  manifest[:formulae] << {
+    name: formula.name,
+    version: formula.version.to_s,
+    url: formula.stable.url,
+    tap: formula_tap_name,
+  }
+  manifest[:statistics][:total_formulae] += 1
+
   sleep options[:sleep]
 end
 
 # Mirror casks from all configured cask taps
+# Skip cask mirroring if specific formulae were requested but no casks were
+skip_casks = options[:iterator] != Formula && options[:casks].nil?
+
 cask_taps = config[:taps].select { |tap_name, tap_info|
   tap_type = tap_info["type"] || tap_info[:type]
   tap_type == "cask" || tap_type == "mixed"
 }
 
-if CaskHelpers.cask_api_available? && !cask_taps.empty?
+if skip_casks
+  ohai "Skipping cask mirroring (use --casks to mirror specific casks)"
+elsif CaskHelpers.cask_api_available? && !cask_taps.empty?
   cask_taps.each do |tap_name, tap_info|
     ohai "Mirroring casks from #{tap_name}..."
 
@@ -418,6 +577,30 @@ if CaskHelpers.cask_api_available? && !cask_taps.empty?
       next unless cask_tap_name == normalized_tap_name
     end
 
+    # In update mode, skip casks that haven't changed
+    if existing_manifest && options[:update_mode]
+      already_mirrored = existing_manifest[:casks].any? do |c|
+        c[:token] == cask.token && c[:version] == cask.version.to_s
+      end
+
+      if already_mirrored
+        ohai "#{cask.token} (#{cask.version}) already in mirror, skipping"
+        # Keep it in the new manifest
+        unless manifest[:casks].any? { |c| c[:token] == cask.token }
+          manifest[:casks] << {
+            token: cask.token,
+            name: (cask.name.first rescue cask.token),
+            version: cask.version.to_s,
+            url: cask.url.to_s,
+          }
+          manifest[:statistics][:total_casks] += 1
+        end
+        next
+      else
+        ohai "#{cask.token} (#{cask.version}) is new or updated, downloading"
+      end
+    end
+
     ohai "Collecting resources for cask: #{cask.token}..."
 
     # Casks have a simpler structure than formulae
@@ -435,10 +618,36 @@ if CaskHelpers.cask_api_available? && !cask_taps.empty?
 
       # Determine download strategy
       # Casks typically use CurlDownloadStrategy
-      downloader = url.downloader
+      # Modern Homebrew's Cask::URL doesn't have a .downloader method,
+      # so we need to instantiate the strategy ourselves
+      begin
+        # Try to get download strategy from URL metadata if available
+        if url.respond_to?(:download_strategy)
+          strategy_class = url.download_strategy
+        else
+          # Default to CurlDownloadStrategy for casks (most common)
+          strategy_class = CurlDownloadStrategy
+        end
 
-      unless BREW_OFFLINE_DOWNLOAD_STRATEGIES.include?(downloader.class)
-        opoo "#{cask.token} uses unsupported download strategy: #{downloader.class}"
+        unless BREW_OFFLINE_DOWNLOAD_STRATEGIES.include?(strategy_class)
+          opoo "#{cask.token} uses unsupported download strategy: #{strategy_class}"
+          next
+        end
+
+        # Instantiate the downloader with cask metadata
+        # Try different constructor signatures for compatibility
+        downloader = begin
+          # Modern Homebrew: url, name, version
+          strategy_class.new(url_str, cask.token, cask.version)
+        rescue ArgumentError
+          # Fallback: url, name
+          strategy_class.new(url_str, cask.token)
+        rescue ArgumentError
+          # Fallback: url only
+          strategy_class.new(url_str)
+        end
+      rescue => e
+        opoo "Failed to create downloader for #{cask.token}: #{e.message}"
         next
       end
 
@@ -531,6 +740,15 @@ if CaskHelpers.cask_api_available? && !cask_taps.empty?
       clean_url = URLHelpers.clean_url(url_str)
       urlmap[clean_url] = new_location.basename.to_s unless clean_url == url_str
 
+      # Track cask in manifest
+      manifest[:casks] << {
+        token: cask.token,
+        name: (cask.name.first rescue cask.token),
+        version: cask.version.to_s,
+        url: url_str,
+      }
+      manifest[:statistics][:total_casks] += 1
+
     rescue StandardError => e
       opoo "Failed to mirror cask #{cask.token}: #{e.message}"
       puts "  #{e.backtrace.first(3).join("\n  ")}" if ENV["HOMEBREW_VERBOSE"]
@@ -568,6 +786,73 @@ end
 # Write urlmap.json
 File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
 
+# Calculate final manifest statistics
+manifest[:statistics][:total_files] = urlmap.count
+manifest[:statistics][:total_size_bytes] = Dir.glob("#{options[:directory]}/*")
+  .select { |f| File.file?(f) }
+  .map { |f| File.size(f) rescue 0 }
+  .sum
+
+# Add tap info to manifest
+config[:taps].each do |tap_name, tap_info|
+  manifest[:taps][tap_name] = tap_info
+end
+
+# Prune old versions if requested
+if options[:prune_old] && existing_manifest
+  ohai "Pruning old versions from mirror..."
+
+  # Find formulae that were removed or updated
+  old_formulae = existing_manifest[:formulae] || []
+  new_formulae = manifest[:formulae] || []
+
+  old_formulae.each do |old_f|
+    # Check if this formula is gone or has a different version
+    current = new_formulae.find { |f| f[:name] == old_f[:name] }
+
+    if current.nil?
+      ohai "  Removed formula: #{old_f[:name]} (#{old_f[:version]})"
+      # Note: Files are referenced by checksum, not formula name
+      # So we can't easily remove them without tracking formula->file mapping
+      # For now, just log it
+    elsif current[:version] != old_f[:version]
+      ohai "  Updated formula: #{old_f[:name]} (#{old_f[:version]} -> #{current[:version]})"
+      # Old version files will remain unless we track them
+    end
+  end
+
+  # Find casks that were removed or updated
+  old_casks = existing_manifest[:casks] || []
+  new_casks = manifest[:casks] || []
+
+  old_casks.each do |old_c|
+    # Check if this cask is gone or has a different version
+    current = new_casks.find { |c| c[:token] == old_c[:token] }
+
+    if current.nil?
+      ohai "  Removed cask: #{old_c[:token]} (#{old_c[:version]})"
+    elsif current[:version] != old_c[:version]
+      ohai "  Updated cask: #{old_c[:token]} (#{old_c[:version]} -> #{current[:version]})"
+    end
+  end
+
+  puts ""
+  puts "Note: --prune currently only reports changes. Actual file removal requires"
+  puts "tracking formula/cask names to their downloaded files. This will be added"
+  puts "in a future update. For now, you can manually remove old files from the mirror."
+  puts ""
+end
+
+# Write manifest.json
+manifest_file = File.join(options[:directory], "manifest.json")
+File.write manifest_file, JSON.pretty_generate(manifest)
+ohai "Manifest written to: manifest.json"
+
+# Generate HTML report
+html_file = File.join(options[:directory], "manifest.html")
+generate_html_report(manifest, html_file)
+ohai "HTML report written to: manifest.html"
+
 # Write identifier cache for Git repository tracking
 # This tracks all Git identifiers to prevent duplicates on subsequent mirror runs
 File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
@@ -575,7 +860,25 @@ File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
 # Verify mirror if requested
 if options[:verify]
   ohai "Verifying mirror integrity..."
+  puts ""
+
+  # Load and execute the verify script directly
+  # This works because we're already in brew ruby context
   verify_script = File.expand_path("brew-mirror-verify", __dir__)
-  result = system("brew", "ruby", verify_script, options[:directory])
-  exit 1 unless result
+
+  # Set ARGV for the verify script and load it
+  old_argv = ARGV.dup
+  ARGV.clear
+  ARGV << options[:directory]
+
+  begin
+    load verify_script
+  rescue SystemExit => e
+    # Verify script calls exit, propagate the exit code
+    exit e.status
+  ensure
+    # Restore original ARGV (though we'll exit anyway)
+    ARGV.clear
+    ARGV.concat(old_argv)
+  end
 end

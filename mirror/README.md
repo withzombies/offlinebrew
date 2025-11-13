@@ -1,97 +1,260 @@
+# Offlinebrew Mirror
+
+The mirror-based approach uses URL rewriting to redirect all Homebrew downloads to a local HTTP server.
+
 ## Tools
 
-Tools can be found under the [bin/](bin/) directory. All tools run on macOS and require
-a Homebrew installation.
+All tools are located in the [bin/](bin/) directory and run on macOS with Homebrew installed.
 
-### `brew-mirror`
+### brew-mirror
 
-`brew-mirror` performs a mirror of all (supported) Homebrew source packages.
+Creates an offline mirror of Homebrew packages (formulas and casks).
 
-The simplest way to run `brew-mirror` is to feed it an output directory:
-
+**Usage:**
 ```bash
-$ mkdir /tmp/brew-mirror
-$ brew ruby ./bin/brew-mirror -d /tmp/brew-mirror
+brew ruby mirror/bin/brew-mirror [options]
 ```
 
-A complete source tree mirror requires about 60GB of space and takes about 8 hours.
-You can cancel and resume it, although `git` repositories are always re-fetched and re-prepped.
+**Options:**
+- `-d, --directory DIR` - Output directory (required)
+- `-f, --formulae f1,f2` - Mirror specific formulae only
+- `--casks c1,c2` - Mirror specific casks only
+- `--taps tap1,tap2` - Taps to mirror (default: core,cask). Supports shortcuts: `core`, `cask`, `fonts`
+- `-s, --sleep SECS` - Sleep between downloads (default: 0.5)
+- `-c, --config-only` - Write config without downloading
+- `--update` - Update existing mirror (skip unchanged packages)
+- `--prune` - Report removed/updated versions when using --update
+- `--verify` - Verify mirror integrity after creation
 
-Once complete, running the mirror is as simple as serving the mirror directory over HTTP:
-
+**Examples:**
 ```bash
-$ cd /tmp/brew-mirror
-$ pythom -m SimpleHTTPServer
+# Mirror everything (requires ~100GB, takes hours)
+brew ruby bin/brew-mirror -d /Volumes/USB/brew-mirror -s 1
+
+# Mirror specific packages
+brew ruby bin/brew-mirror -d ./mirror -f wget,jq --casks firefox -s 1
+
+# Update existing mirror (much faster!)
+brew ruby bin/brew-mirror -d ./mirror -f wget,jq --update --prune
+
+# Mirror with custom taps using shortcuts
+brew ruby bin/brew-mirror -d ./mirror --taps core,cask,fonts
+
+# Mirror formulas only (fast, no casks)
+brew ruby bin/brew-mirror -d ./mirror -f wget,jq --taps core
 ```
 
-`brew-mirror` makes fixups to the `git` repositories that it fetches to make this possible.
+### brew-offline-install
 
-### `brew-mirror-prune`
+Installs packages from the offline mirror.
 
-`brew-mirror-prune` is an *optional* script for managing the size of the mirror. It'll remove
-any files or directories (i.e., `git` repositories) that aren't currently being advertised
-as available by the mirror.
-
-This is mostly useful for removing the occasional duplicate of large `git` repositories.
-
-You should pass it the same directory as `brew-mirror`:
-
+**Usage:**
 ```bash
-$ brew-mirror-prune -d /tmp/brew-mirror
+ruby mirror/bin/brew-offline-install [--cask] <package>
 ```
 
-### `brew-offline-install`
+**Examples:**
+```bash
+# Install formula
+ruby bin/brew-offline-install wget
 
-`brew-offline-install` takes the name of a formula to install from the local mirror.
+# Install cask (GUI application)
+ruby bin/brew-offline-install --cask firefox
 
-It takes normal `brew install` options, but will stop you if you try to pass an option
-that will circumvent the mirror (e.g., asking for a `HEAD` or non-stable spec).
+# Install multiple packages
+ruby bin/brew-offline-install jq htop wget
+```
 
-### `brew-offline-curl`
+### brew-mirror-verify
 
-`brew-offline-curl` is the `curl` shim called by `brew-offline-install` when making "normal"
-(i.e., HTTP(S)) requests. It rewrites the requested URL internally and feeds the rewritten URL to
-the real `curl`.
+Verifies mirror integrity and completeness.
 
-You shouldn't (need to) call it directly, but it *does* need to go into your `$PATH`.
+**Usage:**
+```bash
+brew ruby mirror/bin/brew-mirror-verify [options] <mirror-directory>
+```
 
-### `brew-offline-git`
+**Options:**
+- `--verbose` - Show detailed verification output
+- `--checksums` - Verify file checksums (slow)
 
-`brew-offline-git` is the `git` shim called by `brew-offline-install` when making Git repository
-(i.e. `git clone`) requests. Like `brew-offline-curl`, it rewrites the requested URL
-internally and feeds the rewritten URL to the real `git`.
+**Examples:**
+```bash
+# Quick verification
+brew ruby bin/brew-mirror-verify /path/to/mirror
 
-You shouldn't (need to) call it directly, but it *does* need to go into your `$PATH`.
+# Detailed verification
+brew ruby bin/brew-mirror-verify --verbose /path/to/mirror
+
+# Full verification with checksums
+brew ruby bin/brew-mirror-verify --checksums /path/to/mirror
+```
+
+### brew-offline-curl
+
+The `curl` shim that rewrites HTTP(S) URLs to point to the local mirror.
+
+**Note:** Called automatically by `brew-offline-install`. You don't need to call it directly, but it must be in your `$PATH`.
+
+### brew-offline-git
+
+The `git` shim that rewrites Git repository URLs to point to the local mirror.
+
+**Note:** Called automatically by `brew-offline-install`. You don't need to call it directly, but it must be in your `$PATH`.
 
 ## Configuration
 
-### Client-side
+### Client Configuration
 
-Clients should only need one configuration file: `~/.offlinebrew/config.json`.
-
-Additionally, clients only need to worry about one key in *config.json*:
+Create `~/.offlinebrew/config.json`:
 
 ```json
 {
-    "baseurl": "http://localhost:8000"
+  "baseurl": "http://mirror-server:8000"
 }
 ```
 
-`brew-offline-install` will take care of adding additional information to *config.json*.
+That's it! `brew-offline-install` handles the rest automatically.
 
-### Mirror-side
+### Mirror Configuration
 
-`brew-mirror` writes two files to the mirror directory: *config.json* and *urlmap.json*.
+`brew-mirror` generates these files in the mirror directory:
 
-*config.json* contains various configuration settings read by `brew-offline-install` and the
-`curl`/`git` shims. You shouldn't need to modify it by hand.
+**config.json** - Mirror metadata (auto-generated)
+```json
+{
+  "taps": {
+    "homebrew/homebrew-core": {
+      "commit": "abc123...",
+      "type": "formula"
+    },
+    "homebrew/homebrew-cask": {
+      "commit": "def456...",
+      "type": "cask"
+    }
+  },
+  "stamp": "1699999999",
+  "cache": "/path/to/mirror",
+  "baseurl": "http://localhost:8000"
+}
+```
 
-*urlmap.json* contains a mapping of original resource URLs
-(e.g., `https://example.com/foobar-4.0.tar.gz`) to unique identifiers + extensions
-(e.g., `f2c1e86ca0a404ff281631bdc8377638992744b175afb806e25871a24a934e07.tar.gz`). These
-identifiers + extensions are expected to exist under the `baseurl` key in *config.json*.
-You shouldn't need to modify *urlmap.json* by hand.
+**urlmap.json** - URL to file mapping (auto-generated)
+```json
+{
+  "https://example.com/foobar-4.0.tar.gz": "f2c1e86ca...e07.tar.gz",
+  "https://github.com/user/repo.git": "abc123def...456"
+}
+```
 
-As an example, if `baseurl` is `http://192.168.1.5:8080`, then *urlmap.json* tells the individual
-shims that `https://example.com/foobar-4.0.tar.gz` is actually
-`http://192.168.1.5:8080/f2c1e86ca0a404ff281631bdc8377638992744b175afb806e25871a24a934e07.tar.gz`.
+**manifest.json** - Mirror contents (auto-generated)
+```json
+{
+  "created_at": "2025-11-13T...",
+  "taps": {...},
+  "statistics": {
+    "total_formulae": 100,
+    "total_casks": 50,
+    "total_files": 500,
+    "total_size_bytes": 12345678900
+  },
+  "formulae": [...],
+  "casks": [...]
+}
+```
+
+**manifest.html** - Human-readable mirror report (auto-generated)
+
+Open this file in a browser to see what's in your mirror!
+
+**identifier_cache.json** - Git repository cache (auto-generated)
+
+Tracks Git repositories to prevent duplicate downloads on incremental updates.
+
+## Serving the Mirror
+
+Any HTTP server works. Examples:
+
+### Python (built-in, simple)
+```bash
+cd /path/to/mirror
+python3 -m http.server 8000
+```
+
+### Nginx (production-ready)
+```nginx
+server {
+  listen 8000;
+  root /path/to/mirror;
+  autoindex on;
+
+  # Optional: Enable gzip compression
+  gzip on;
+  gzip_types application/json text/plain;
+}
+```
+
+### Apache (production-ready)
+```apache
+<VirtualHost *:8000>
+    DocumentRoot /path/to/mirror
+    <Directory /path/to/mirror>
+        Options +Indexes
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+
+## Incremental Updates
+
+Use `--update` to add new packages without re-downloading:
+
+```bash
+# Create initial mirror
+brew ruby bin/brew-mirror -d ./mirror -f wget -s 1
+
+# Later, add more packages (wget is skipped!)
+brew ruby bin/brew-mirror -d ./mirror -f wget,jq,htop --update -s 1
+
+# Update after tap commits change
+brew ruby bin/brew-mirror -d ./mirror -f wget,jq --update --prune
+```
+
+The `--prune` flag reports what changed but doesn't remove files (manual cleanup required).
+
+## Point-in-Time Snapshots
+
+Mirrors are point-in-time snapshots tied to specific tap commits:
+
+```json
+{
+  "taps": {
+    "homebrew/homebrew-core": {
+      "commit": "abc123...",  # This exact commit
+      "type": "formula"
+    }
+  }
+}
+```
+
+This ensures reproducible installations - installing from the mirror today gives you the same package versions as installing next month.
+
+## Troubleshooting
+
+See [../TROUBLESHOOTING.md](../TROUBLESHOOTING.md) for common issues.
+
+## Architecture
+
+See [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) for technical details on how URL rewriting works.
+
+## Testing
+
+Run the integration tests:
+```bash
+cd mirror/test
+./run_integration_tests.sh
+```
+
+## Migration from v1.x
+
+See [../MIGRATION.md](../MIGRATION.md) for upgrading from older versions.

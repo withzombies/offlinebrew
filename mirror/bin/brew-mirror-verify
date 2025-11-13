@@ -70,7 +70,11 @@ class MirrorVerifier
     puts "Mirror: #{mirror_dir}"
     puts ""
 
-    return false unless errors.empty? # Can't continue if files missing
+    # Can't continue if essential files missing, but show what's wrong
+    if !errors.empty?
+      print_summary
+      return false
+    end
 
     verify_config
     verify_files
@@ -152,7 +156,13 @@ class MirrorVerifier
 
     # Check for orphaned files (in mirror but not in urlmap)
     mirror_files = Dir.glob(mirror_dir / "*").map { |f| File.basename(f) }
-    expected_files = urlmap.values.uniq + ["config.json", "urlmap.json", "identifier_cache.json"]
+    expected_files = urlmap.values.uniq + [
+      "config.json",
+      "urlmap.json",
+      "identifier_cache.json",
+      "manifest.json",
+      "manifest.html"
+    ]
     orphaned = mirror_files - expected_files
 
     if orphaned.any?
@@ -167,17 +177,20 @@ class MirrorVerifier
       puts "    Tip: Orphaned files may be from previous mirror runs"
     end
 
-    # Count actual files
-    actual_files = mirror_files - ["config.json", "urlmap.json", "identifier_cache.json"]
+    # Count actual files (exclude metadata files)
+    metadata_files = ["config.json", "urlmap.json", "identifier_cache.json", "manifest.json", "manifest.html"]
+    actual_files = mirror_files - metadata_files
     puts "  ✓ Actual files: #{actual_files.count}"
     @stats[:files] = actual_files.count
 
     # Calculate total size
-    result = SafeShell.execute("du", "-sh", mirror_dir.to_s)
-    if result[:success]
-      total_size = result[:stdout].split.first
+    begin
+      result = SafeShell.execute("du", "-sh", mirror_dir.to_s)
+      total_size = result.split.first
       puts "  ✓ Total size: #{total_size}"
       @stats[:size] = total_size
+    rescue SafeShell::ExecutionError, SafeShell::TimeoutError
+      # Ignore if du command fails
     end
 
     puts ""
