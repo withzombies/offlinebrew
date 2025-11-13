@@ -221,6 +221,20 @@ identifier_cache = if File.exist?(identifier_cache_file)
                      {}
                    end
 
+# Initialize manifest for documenting the mirror contents
+manifest = {
+  created_at: Time.now.iso8601,
+  taps: {},
+  statistics: {
+    total_formulae: 0,
+    total_casks: 0,
+    total_files: 0,
+    total_size_bytes: 0,
+  },
+  formulae: [],
+  casks: [],
+}
+
 # In config-only mode, write empty urlmap and exit early
 if options[:config_only]
   File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
@@ -249,6 +263,85 @@ def normalize_tap_name(tap_name)
   else
     tap_name
   end
+end
+
+# Generate HTML report from manifest
+def generate_html_report(manifest, output_file)
+  html = <<~HTML
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Offlinebrew Mirror Manifest</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #f90; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; }
+        th { background: #f2f2f2; font-weight: 600; }
+        tr:hover { background: #f9f9f9; }
+        .stats { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; margin: 20px 0; border-radius: 8px; }
+        .stats h2 { color: white; margin-top: 0; }
+        .stats p { margin: 8px 0; font-size: 16px; }
+        .stats strong { font-weight: 600; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: "Monaco", "Courier New", monospace; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🍺 Offlinebrew Mirror Manifest</h1>
+
+        <div class="stats">
+          <h2>📊 Statistics</h2>
+          <p><strong>Created:</strong> #{manifest[:created_at]}</p>
+          <p><strong>Formulae:</strong> #{manifest[:statistics][:total_formulae]}</p>
+          <p><strong>Casks:</strong> #{manifest[:statistics][:total_casks]}</p>
+          <p><strong>Total Files:</strong> #{manifest[:statistics][:total_files]}</p>
+          <p><strong>Total Size:</strong> #{(manifest[:statistics][:total_size_bytes] / 1024.0 / 1024.0 / 1024.0).round(2)} GB</p>
+        </div>
+
+        <h2>📦 Taps</h2>
+        <table>
+          <tr><th>Tap</th><th>Commit</th><th>Type</th></tr>
+  HTML
+
+  manifest[:taps].each do |tap, info|
+    html += "        <tr><td><code>#{tap}</code></td><td><code>#{info["commit"][0..7]}</code></td><td>#{info["type"]}</td></tr>\n"
+  end
+
+  html += <<~HTML
+        </table>
+
+        <h2>⚗️  Formulae (#{manifest[:formulae].count})</h2>
+        <table>
+          <tr><th>Name</th><th>Version</th><th>Tap</th></tr>
+  HTML
+
+  manifest[:formulae].each do |formula|
+    html += "        <tr><td><code>#{formula[:name]}</code></td><td>#{formula[:version]}</td><td><code>#{formula[:tap]}</code></td></tr>\n"
+  end
+
+  html += <<~HTML
+        </table>
+
+        <h2>📦 Casks (#{manifest[:casks].count})</h2>
+        <table>
+          <tr><th>Token</th><th>Name</th><th>Version</th></tr>
+  HTML
+
+  manifest[:casks].each do |cask|
+    html += "        <tr><td><code>#{cask[:token]}</code></td><td>#{cask[:name]}</td><td>#{cask[:version]}</td></tr>\n"
+  end
+
+  html += <<~HTML
+        </table>
+      </div>
+    </body>
+    </html>
+  HTML
+
+  File.write(output_file, html)
 end
 
 # Finally, fetch the (stable) resources for each formula from configured taps.
@@ -376,6 +469,15 @@ options[:iterator].each do |formula|
     clean_url = URLHelpers.clean_url(url_str)
     urlmap[clean_url] = new_location.basename unless clean_url == url_str
   end
+
+  # Track formula in manifest
+  manifest[:formulae] << {
+    name: formula.name,
+    version: formula.version.to_s,
+    url: formula.stable.url,
+    tap: formula_tap_name,
+  }
+  manifest[:statistics][:total_formulae] += 1
 
   sleep options[:sleep]
 end
@@ -565,6 +667,15 @@ elsif CaskHelpers.cask_api_available? && !cask_taps.empty?
       clean_url = URLHelpers.clean_url(url_str)
       urlmap[clean_url] = new_location.basename.to_s unless clean_url == url_str
 
+      # Track cask in manifest
+      manifest[:casks] << {
+        token: cask.token,
+        name: (cask.name.first rescue cask.token),
+        version: cask.version.to_s,
+        url: url_str,
+      }
+      manifest[:statistics][:total_casks] += 1
+
     rescue StandardError => e
       opoo "Failed to mirror cask #{cask.token}: #{e.message}"
       puts "  #{e.backtrace.first(3).join("\n  ")}" if ENV["HOMEBREW_VERBOSE"]
@@ -601,6 +712,28 @@ end
 
 # Write urlmap.json
 File.write File.join(options[:directory], "urlmap.json"), urlmap.to_json
+
+# Calculate final manifest statistics
+manifest[:statistics][:total_files] = urlmap.count
+manifest[:statistics][:total_size_bytes] = Dir.glob("#{options[:directory]}/*")
+  .select { |f| File.file?(f) }
+  .map { |f| File.size(f) rescue 0 }
+  .sum
+
+# Add tap info to manifest
+config[:taps].each do |tap_name, tap_info|
+  manifest[:taps][tap_name] = tap_info
+end
+
+# Write manifest.json
+manifest_file = File.join(options[:directory], "manifest.json")
+File.write manifest_file, JSON.pretty_generate(manifest)
+ohai "Manifest written to: manifest.json"
+
+# Generate HTML report
+html_file = File.join(options[:directory], "manifest.html")
+generate_html_report(manifest, html_file)
+ohai "HTML report written to: manifest.html"
 
 # Write identifier cache for Git repository tracking
 # This tracks all Git identifiers to prevent duplicates on subsequent mirror runs
