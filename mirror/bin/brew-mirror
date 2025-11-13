@@ -127,6 +127,8 @@ options = {
   casks: nil,
   taps: ["homebrew/homebrew-core", "homebrew/homebrew-cask"],  # Default taps
   verify: false,
+  update_mode: false,
+  prune_old: false,
 }
 
 OptionParser.new do |parser|
@@ -158,6 +160,14 @@ OptionParser.new do |parser|
 
   parser.on "--verify", "verify mirror integrity after creation" do
     options[:verify] = true
+  end
+
+  parser.on "--update", "update existing mirror (skip unchanged packages)" do
+    options[:update_mode] = true
+  end
+
+  parser.on "--prune", "remove old versions when updating" do
+    options[:prune_old] = true
   end
 end.parse!
 
@@ -221,7 +231,22 @@ identifier_cache = if File.exist?(identifier_cache_file)
                      {}
                    end
 
-# Initialize manifest for documenting the mirror contents
+# Initialize or load manifest for documenting the mirror contents
+existing_manifest = nil
+if options[:update_mode]
+  manifest_file = File.join(options[:directory], "manifest.json")
+  if File.exist?(manifest_file)
+    existing_manifest = JSON.parse(File.read(manifest_file), symbolize_names: true)
+    ohai "Loading existing manifest for incremental update"
+    ohai "  Previous mirror created: #{existing_manifest[:created_at]}"
+    ohai "  Previous formulae: #{existing_manifest[:formulae].count}"
+    ohai "  Previous casks: #{existing_manifest[:casks].count}"
+  else
+    opoo "No existing manifest found, performing full mirror"
+    options[:update_mode] = false  # Fallback to full mirror
+  end
+end
+
 manifest = {
   created_at: Time.now.iso8601,
   taps: {},
@@ -231,8 +256,8 @@ manifest = {
     total_files: 0,
     total_size_bytes: 0,
   },
-  formulae: [],
-  casks: [],
+  formulae: existing_manifest ? existing_manifest[:formulae].dup : [],
+  casks: existing_manifest ? existing_manifest[:casks].dup : [],
 }
 
 # In config-only mode, write empty urlmap and exit early
@@ -372,6 +397,30 @@ options[:iterator].each do |formula|
   end
 
   next unless config[:taps].key?(formula_tap_name)
+
+  # In update mode, skip formulae that haven't changed
+  if existing_manifest && options[:update_mode]
+    already_mirrored = existing_manifest[:formulae].any? do |f|
+      f[:name] == formula.name && f[:version] == formula.version.to_s
+    end
+
+    if already_mirrored
+      ohai "#{formula.name} (#{formula.version}) already in mirror, skipping"
+      # Keep it in the new manifest
+      unless manifest[:formulae].any? { |f| f[:name] == formula.name }
+        manifest[:formulae] << {
+          name: formula.name,
+          version: formula.version.to_s,
+          url: formula.stable.url,
+          tap: formula_tap_name,
+        }
+        manifest[:statistics][:total_formulae] += 1
+      end
+      next
+    else
+      ohai "#{formula.name} (#{formula.version}) is new or updated, downloading"
+    end
+  end
 
   ohai "Collecting resources for #{formula.name}..."
 
@@ -526,6 +575,30 @@ elsif CaskHelpers.cask_api_available? && !cask_taps.empty?
       cask_tap_name = normalize_tap_name(cask_tap_name)
       normalized_tap_name = normalize_tap_name(tap_name)
       next unless cask_tap_name == normalized_tap_name
+    end
+
+    # In update mode, skip casks that haven't changed
+    if existing_manifest && options[:update_mode]
+      already_mirrored = existing_manifest[:casks].any? do |c|
+        c[:token] == cask.token && c[:version] == cask.version.to_s
+      end
+
+      if already_mirrored
+        ohai "#{cask.token} (#{cask.version}) already in mirror, skipping"
+        # Keep it in the new manifest
+        unless manifest[:casks].any? { |c| c[:token] == cask.token }
+          manifest[:casks] << {
+            token: cask.token,
+            name: (cask.name.first rescue cask.token),
+            version: cask.version.to_s,
+            url: cask.url.to_s,
+          }
+          manifest[:statistics][:total_casks] += 1
+        end
+        next
+      else
+        ohai "#{cask.token} (#{cask.version}) is new or updated, downloading"
+      end
     end
 
     ohai "Collecting resources for cask: #{cask.token}..."
@@ -723,6 +796,51 @@ manifest[:statistics][:total_size_bytes] = Dir.glob("#{options[:directory]}/*")
 # Add tap info to manifest
 config[:taps].each do |tap_name, tap_info|
   manifest[:taps][tap_name] = tap_info
+end
+
+# Prune old versions if requested
+if options[:prune_old] && existing_manifest
+  ohai "Pruning old versions from mirror..."
+
+  # Find formulae that were removed or updated
+  old_formulae = existing_manifest[:formulae] || []
+  new_formulae = manifest[:formulae] || []
+
+  old_formulae.each do |old_f|
+    # Check if this formula is gone or has a different version
+    current = new_formulae.find { |f| f[:name] == old_f[:name] }
+
+    if current.nil?
+      ohai "  Removed formula: #{old_f[:name]} (#{old_f[:version]})"
+      # Note: Files are referenced by checksum, not formula name
+      # So we can't easily remove them without tracking formula->file mapping
+      # For now, just log it
+    elsif current[:version] != old_f[:version]
+      ohai "  Updated formula: #{old_f[:name]} (#{old_f[:version]} -> #{current[:version]})"
+      # Old version files will remain unless we track them
+    end
+  end
+
+  # Find casks that were removed or updated
+  old_casks = existing_manifest[:casks] || []
+  new_casks = manifest[:casks] || []
+
+  old_casks.each do |old_c|
+    # Check if this cask is gone or has a different version
+    current = new_casks.find { |c| c[:token] == old_c[:token] }
+
+    if current.nil?
+      ohai "  Removed cask: #{old_c[:token]} (#{old_c[:version]})"
+    elsif current[:version] != old_c[:version]
+      ohai "  Updated cask: #{old_c[:token]} (#{old_c[:version]} -> #{current[:version]})"
+    end
+  end
+
+  puts ""
+  puts "Note: --prune currently only reports changes. Actual file removal requires"
+  puts "tracking formula/cask names to their downloaded files. This will be added"
+  puts "in a future update. For now, you can manually remove old files from the mirror."
+  puts ""
 end
 
 # Write manifest.json
