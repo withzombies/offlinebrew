@@ -227,7 +227,9 @@ options[:taps].each do |tap_name|
   expanded_tap_name = TapManager.expand_tap_name(tap_name)
 
   unless TapManager.tap_installed?(expanded_tap_name)
-    opoo "Tap not installed: #{expanded_tap_name}, skipping"
+    tap_dir = TapManager.tap_directory(expanded_tap_name)
+    opoo "Tap not installed: #{expanded_tap_name}"
+    opoo "  Expected location: #{tap_dir}"
     next
   end
 
@@ -248,7 +250,25 @@ options[:taps].each do |tap_name|
 end
 
 # Ensure at least one tap configured
-abort "Fatal: No valid taps configured!" if config[:taps].empty?
+if config[:taps].empty?
+  # List installed taps to help user
+  installed_taps = TapManager.all_installed_taps
+
+  puts "\nFatal: No valid taps configured!"
+  puts "\nYou requested: #{options[:taps].map { |t| TapManager.expand_tap_name(t) }.join(', ')}"
+
+  if installed_taps.empty?
+    puts "\nNo taps are currently installed on your system."
+    puts "Install taps with: brew tap <tap-name>"
+    puts "Example: brew tap homebrew/core"
+  else
+    puts "\nInstalled taps on your system:"
+    installed_taps.each { |tap| puts "  - #{tap}" }
+    puts "\nTo mirror these taps, use: --taps #{installed_taps.join(',')}"
+  end
+
+  abort
+end
 
 # Legacy fields for backward compatibility
 # Use first tap's commit (usually homebrew-core) for old format
