@@ -14,6 +14,7 @@ require_relative "../lib/container_helpers"
 require_relative "../lib/download_helpers"
 require_relative "../lib/url_helpers"
 require_relative "../lib/tap_manager"
+require_relative "../lib/dependency_resolver"
 
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
@@ -129,6 +130,8 @@ options = {
   verify: false,
   update_mode: false,
   prune_old: false,
+  with_deps: false,          # Automatic dependency resolution (Phase 6)
+  include_build: false,      # Include build dependencies (Phase 6)
 }
 
 OptionParser.new do |parser|
@@ -169,7 +172,21 @@ OptionParser.new do |parser|
   parser.on "--prune", "remove old versions when updating" do
     options[:prune_old] = true
   end
+
+  parser.on "--with-deps", "automatically include all dependencies" do
+    options[:with_deps] = true
+  end
+
+  parser.on "--include-build", "include build dependencies (requires --with-deps)" do
+    options[:include_build] = true
+  end
 end.parse!
+
+# Validate options
+if options[:include_build] && !options[:with_deps]
+  abort "Error: --include-build requires --with-deps\n" \
+        "Usage: brew offline mirror -f wget --with-deps --include-build"
+end
 
 abort "Fatal: the output directory must exist" unless Dir.exist?(options[:directory])
 
@@ -367,6 +384,62 @@ def generate_html_report(manifest, output_file)
   HTML
 
   File.write(output_file, html)
+end
+
+# Resolve dependencies if requested (Phase 6: Task 6.1.3)
+cask_formula_deps = []
+
+# First, resolve cask dependencies if casks were specified
+# We do this first so we can include formula dependencies in the formula loop
+if options[:with_deps] && options[:casks]
+  ohai "Resolving cask dependencies first..."
+  resolved = DependencyResolver.resolve_casks(
+    options[:casks],
+    include_build: options[:include_build]
+  )
+
+  # Update casks list
+  options[:casks] = resolved[:casks]
+
+  # Save formula dependencies to add to formula iterator
+  cask_formula_deps = resolved[:formulas]
+
+  if cask_formula_deps.any?
+    ohai "Found #{cask_formula_deps.count} formula dependencies for casks"
+  end
+end
+
+# Now resolve formula dependencies
+if options[:with_deps] && options[:iterator] != Formula
+  # User specified specific formulas with -f and wants dependencies
+  formula_names = options[:iterator].map(&:name)
+
+  # Add cask formula dependencies
+  formula_names += cask_formula_deps
+  formula_names.uniq!
+
+  ohai "Dependency resolution enabled (--with-deps)"
+  resolved_names = DependencyResolver.resolve_formulas(
+    formula_names,
+    include_build: options[:include_build],
+    include_optional: false
+  )
+
+  # Update iterator with resolved formulas
+  options[:iterator] = resolved_names.map { |name| Formula[name] }
+
+  original_count = formula_names.count - cask_formula_deps.count
+  added_count = resolved_names.count - original_count
+  if added_count > 0
+    ohai "Added #{added_count} formula dependencies to mirror list"
+  end
+elsif options[:with_deps] && options[:iterator] == Formula && cask_formula_deps.any?
+  # Mirroring all formulas - but we have cask formula deps
+  # They'll be included anyway since we're mirroring everything
+  ohai "Mirroring all formulas (cask dependencies will be included)"
+elsif options[:with_deps] && options[:iterator] == Formula
+  # Mirroring all formulas - dependency resolution not needed
+  ohai "Mirroring all formulas - dependency resolution not needed"
 end
 
 # Finally, fetch the (stable) resources for each formula from configured taps.

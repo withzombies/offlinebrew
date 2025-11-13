@@ -70,16 +70,20 @@ Start with a small mirror of specific packages:
 brew offline mirror \
   -d ~/brew-mirror \
   -f wget,jq,htop \
+  --with-deps \
   --casks firefox,visual-studio-code \
   -s 1
 ```
 
 This creates a mirror with:
 - 3 command-line tools (wget, jq, htop)
+- **All their dependencies** (automatically resolved with `--with-deps`)
 - 2 GUI applications (Firefox, Visual Studio Code)
 - 1 second delay between downloads (polite to servers)
 
 **Expected**: ~500MB download, takes 5-10 minutes
+
+**Why `--with-deps`?** Without this flag, only the specified packages are mirrored. On an offline machine, installations would fail due to missing dependencies. The `--with-deps` flag automatically resolves and includes all required dependencies.
 
 #### Option B: Mirror Everything (for Production Use)
 
@@ -111,6 +115,8 @@ brew offline mirror \
 - `-d, --directory` - Where to store the mirror (required)
 - `-f, --formulae` - Specific command-line tools to mirror (comma-separated)
 - `--casks` - Specific GUI apps to mirror (comma-separated)
+- `--with-deps` - ⭐ **Automatically resolve and mirror all dependencies** (highly recommended!)
+- `--include-build` - Include build dependencies (requires `--with-deps`)
 - `--taps` - Which Homebrew taps to include (default: core,cask)
   - Available shortcuts: `core`, `cask`, `fonts`, `versions`, `drivers`
 - `-s, --sleep` - Seconds to wait between downloads (default: 0.5, recommended: 1)

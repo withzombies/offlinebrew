@@ -9,8 +9,8 @@ This document covers advanced usage, configuration, and troubleshooting.
 ## Quick Reference
 
 ```bash
-# Create mirror with specific packages
-brew offline mirror -d ~/mirror -f wget,jq --casks firefox -s 1
+# Create mirror with specific packages (with dependencies)
+brew offline mirror -d ~/mirror -f wget,jq --with-deps --casks firefox -s 1
 
 # Update existing mirror
 brew offline mirror -d ~/mirror --update --prune
@@ -42,6 +42,8 @@ brew offline mirror [options]
 **Package Selection:**
 - `-f, --formulae f1,f2,...` - Mirror specific formulae (comma-separated)
 - `--casks c1,c2,...` - Mirror specific casks (comma-separated)
+- `--with-deps` - ⭐ **Automatically resolve and mirror all dependencies** (highly recommended!)
+- `--include-build` - Include build dependencies (requires `--with-deps`)
 - `--taps tap1,tap2,...` - Taps to mirror (default: core,cask)
   - Shortcuts: `core`, `cask`, `fonts`, `versions`, `drivers`
   - Full names: `homebrew/homebrew-core`, `mycompany/homebrew-private`
@@ -59,20 +61,23 @@ brew offline mirror [options]
 # Mirror everything (requires ~100GB, takes hours)
 brew offline mirror -d /Volumes/USB/brew-mirror -s 1
 
-# Mirror specific packages (recommended for getting started)
-brew offline mirror -d ~/mirror -f wget,jq,htop --casks firefox -s 1
+# Mirror specific packages with dependencies (recommended!)
+brew offline mirror -d ~/mirror -f wget,jq,htop --with-deps --casks firefox -s 1
+
+# Mirror with build dependencies (for source builds)
+brew offline mirror -d ~/mirror -f wget --with-deps --include-build -s 1
 
 # Update existing mirror (much faster!)
 brew offline mirror -d ~/mirror --update --prune
 
 # Mirror with custom taps
-brew offline mirror -d ~/mirror --taps core,cask,fonts -f wget
+brew offline mirror -d ~/mirror --taps core,cask,fonts -f wget --with-deps
 
 # Mirror formulas only (no casks, faster)
-brew offline mirror -d ~/mirror -f wget,jq,curl --taps core
+brew offline mirror -d ~/mirror -f wget,jq,curl --with-deps --taps core
 
 # Mirror with automatic verification
-brew offline mirror -d ~/mirror -f wget --verify
+brew offline mirror -d ~/mirror -f wget --with-deps --verify
 
 # Config-only mode (for testing)
 brew offline mirror -d ~/mirror -f wget -c
@@ -221,6 +226,121 @@ export BREW_OFFLINE_DEBUG=1
 brew offline install formula-with-git-dependency
 # Shows: [brew-offline-git] Redirecting: https://github.com/...
 ```
+
+## Advanced Features
+
+### Automatic Dependency Resolution
+
+**Problem:** When mirroring specific packages, dependencies are NOT included by default. This leads to installation failures on offline machines.
+
+**Example without --with-deps:**
+```bash
+# Mirror only wget (no dependencies)
+brew offline mirror -d ~/mirror -f wget
+
+# On offline machine - FAILS! ❌
+brew offline install wget
+# Error: wget depends on openssl@3, libidn2, gettext... (not in mirror)
+```
+
+**Solution:** Use `--with-deps` to automatically resolve and include all dependencies:
+
+```bash
+# Mirror wget WITH all dependencies ✅
+brew offline mirror -d ~/mirror -f wget --with-deps
+
+# On offline machine - SUCCESS! ✅
+brew offline install wget
+# Works perfectly! All dependencies are in the mirror.
+```
+
+#### How It Works
+
+The dependency resolver:
+1. **Finds dependencies** - Uses Homebrew's Formula API to discover all dependencies
+2. **Resolves recursively** - Traverses the full dependency tree (dependencies of dependencies)
+3. **Deduplicates** - Shared dependencies (like openssl) are included only once
+4. **Reports progress** - Shows how many dependencies were added
+
+#### Dependency Types
+
+**Runtime Dependencies** (always included with `--with-deps`):
+- Required for the package to run
+- Example: wget depends on openssl@3, gettext, libidn2
+
+**Build Dependencies** (opt-in with `--include-build`):
+- Only needed to compile from source
+- Example: pkg-config, autoconf, cmake
+- Usage: `brew offline mirror -f wget --with-deps --include-build`
+
+**Optional Dependencies** (not included):
+- Add extra features but not required
+- Must be explicitly listed if needed
+
+#### Examples
+
+**Basic usage (runtime dependencies only):**
+```bash
+brew offline mirror -d ~/mirror -f wget,jq,curl --with-deps
+```
+
+**Include build dependencies (for source builds):**
+```bash
+brew offline mirror -d ~/mirror -f wget --with-deps --include-build
+```
+
+**Multiple packages (shared dependencies are deduplicated):**
+```bash
+# Both wget and curl depend on openssl - it's included only once
+brew offline mirror -d ~/mirror -f wget,curl --with-deps
+```
+
+**Casks with formula dependencies:**
+```bash
+# Some casks depend on formulas (e.g., docker cask → docker formula)
+brew offline mirror -d ~/mirror --casks docker --with-deps
+```
+
+#### Debug Mode
+
+See the full dependency tree:
+```bash
+export BREW_OFFLINE_DEBUG=1
+brew offline mirror -d ~/mirror -f wget --with-deps
+
+# Output shows dependency tree:
+# ==> Dependency Tree:
+# └── wget
+#     ├── gettext
+#     ├── libidn2
+#     │   └── libunistring
+#     └── openssl@3
+```
+
+#### Best Practices
+
+**✅ DO:**
+- Always use `--with-deps` when mirroring specific packages
+- Use `--include-build` if you need to compile from source
+- Check manifest.json or manifest.html to verify all dependencies were included
+
+**❌ DON'T:**
+- Mirror specific packages WITHOUT `--with-deps` (installations will fail offline)
+- Use `--include-build` without `--with-deps` (will error)
+
+#### FAQ
+
+**Q: Do I need --with-deps when mirroring ALL packages?**
+A: No, if you're mirroring everything (`--taps core` with no `-f`), all packages are included anyway.
+
+**Q: How much larger is a mirror with --with-deps?**
+A: Depends on the package. wget has ~5 dependencies. Python has ~20. Typically adds 50-200MB per package.
+
+**Q: Does --with-deps slow down mirroring?**
+A: No! Dependency resolution takes < 1 second. Download time is the same (you're downloading what you need).
+
+**Q: Can I exclude specific dependencies?**
+A: Not currently, but you can manually remove them from the mirror and urlmap.json.
 
 ## Configuration
 

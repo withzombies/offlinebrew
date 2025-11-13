@@ -7,6 +7,7 @@ Perfect for secure networks, remote locations, CI/CD pipelines, and reproducible
 ## Features
 
 - ✅ **Full Homebrew support** - Mirror both formulas (CLI tools) and casks (GUI apps)
+- ✅ **Automatic dependencies** - Recursively resolve and mirror all dependencies with `--with-deps`
 - ✅ **Multi-tap support** - Include core, cask, fonts, and custom taps
 - ✅ **Incremental updates** - Skip unchanged packages (10-100x faster!)
 - ✅ **Point-in-time snapshots** - Reproducible builds with commit pinning
@@ -31,10 +32,11 @@ export PATH="$(pwd)/bin:$PATH"
 ### 1. Create a Mirror (on a machine with internet)
 
 ```bash
-# Mirror specific packages
+# Mirror specific packages (with dependencies)
 brew offline mirror \
   -d ~/brew-mirror \
   -f wget,jq,htop \
+  --with-deps \
   --casks firefox,visual-studio-code \
   -s 1
 
@@ -118,6 +120,20 @@ See [INSTALLATION.md](INSTALLATION.md) for detailed requirements.
 
 ## Advanced Features
 
+### Automatic Dependency Resolution
+
+Mirror packages with all their dependencies automatically:
+
+```bash
+# Mirror wget and all its dependencies
+brew offline mirror -d ~/brew-mirror -f wget --with-deps
+
+# Include build dependencies too
+brew offline mirror -d ~/brew-mirror -f wget --with-deps --include-build
+```
+
+No more manual dependency tracking!
+
 ### Incremental Updates
 
 Update existing mirrors without re-downloading everything:
@@ -166,10 +182,11 @@ Offlinebrew uses a **mirror-based approach** that provides full-featured offline
 
 All functionality is in the `mirror/` directory.
 
-## Version 2.0 Highlights
+## Recent Updates
 
-🎉 **Major release with comprehensive improvements!**
+🎉 **Version 2.1+ with automatic dependency resolution!**
 
+- **Automatic dependencies** ⭐ NEW - Use `--with-deps` to mirror dependencies automatically
 - **Full cask support** - Install GUI apps, fonts, drivers
 - **Multi-tap configuration** - Any Homebrew tap, not just core
 - **Incremental updates** - 10-100x faster mirror updates
@@ -177,7 +194,7 @@ All functionality is in the `mirror/` directory.
 - **Beautiful manifests** - JSON and HTML reports
 - **Apple Silicon native** - Full M1/M2/M3 support
 - **Security hardening** - Protection against injection attacks
-- **Comprehensive tests** - 39+ integration tests
+- **Comprehensive tests** - 50+ integration tests
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
 

@@ -5,6 +5,28 @@ All notable changes to offlinebrew will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-11-13
+
+Automatic dependency resolution - the most requested feature!
+
+### Added
+- **Automatic dependency resolution** with `--with-deps` flag - Recursively resolve and mirror all dependencies
+- **Build dependency support** with `--include-build` flag - Include build dependencies for source compilation
+- **DependencyResolver module** - Core dependency resolution engine with BFS traversal
+- **Dependency progress reporting** - Shows how many dependencies were added during mirroring
+- **Debug mode dependency tree** - Visualize dependency relationships with `BREW_OFFLINE_DEBUG=1`
+- **Comprehensive dependency tests** - Unit and integration tests for dependency resolution
+- **Cask dependency resolution** - Automatically resolve formula dependencies for casks
+
+### Changed
+- **Documentation updates** - All examples now use `--with-deps` for selective mirroring
+- **Recommended workflow** - `--with-deps` is now the recommended approach for mirroring specific packages
+- **Better error messages** - Validation ensures `--include-build` requires `--with-deps`
+
+### Fixed
+- **Missing dependencies** - Packages now install successfully offline when mirrored with `--with-deps`
+- **Manual dependency tracking** - No longer needed, automatic resolution handles it
+
 ## [2.0.0] - 2025-11-13
 
 Major modernization release adding cask support, multi-tap configuration, and comprehensive tooling.
