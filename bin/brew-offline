@@ -93,7 +93,7 @@ main() {
   case "$command" in
     mirror)
       # brew-mirror needs brew ruby to access Homebrew internals
-      exec brew ruby "${MIRROR_BIN}/brew-mirror" "$@"
+      exec brew ruby -- "${MIRROR_BIN}/brew-mirror" "$@"
       ;;
     install)
       # brew-offline-install can run with regular ruby
@@ -101,7 +101,7 @@ main() {
       ;;
     verify)
       # brew-mirror-verify needs brew ruby to access Homebrew internals
-      exec brew ruby "${MIRROR_BIN}/brew-mirror-verify" "$@"
+      exec brew ruby -- "${MIRROR_BIN}/brew-mirror-verify" "$@"
       ;;
     --version|-v)
       echo "offlinebrew 2.0.0"
