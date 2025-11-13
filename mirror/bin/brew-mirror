@@ -378,12 +378,17 @@ options[:iterator].each do |formula|
 end
 
 # Mirror casks from all configured cask taps
+# Skip cask mirroring if specific formulae were requested but no casks were
+skip_casks = options[:iterator] != Formula && options[:casks].nil?
+
 cask_taps = config[:taps].select { |tap_name, tap_info|
   tap_type = tap_info["type"] || tap_info[:type]
   tap_type == "cask" || tap_type == "mixed"
 }
 
-if CaskHelpers.cask_api_available? && !cask_taps.empty?
+if skip_casks
+  ohai "Skipping cask mirroring (use --casks to mirror specific casks)"
+elsif CaskHelpers.cask_api_available? && !cask_taps.empty?
   cask_taps.each do |tap_name, tap_info|
     ohai "Mirroring casks from #{tap_name}..."
 
