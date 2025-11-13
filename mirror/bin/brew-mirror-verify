@@ -156,7 +156,13 @@ class MirrorVerifier
 
     # Check for orphaned files (in mirror but not in urlmap)
     mirror_files = Dir.glob(mirror_dir / "*").map { |f| File.basename(f) }
-    expected_files = urlmap.values.uniq + ["config.json", "urlmap.json", "identifier_cache.json"]
+    expected_files = urlmap.values.uniq + [
+      "config.json",
+      "urlmap.json",
+      "identifier_cache.json",
+      "manifest.json",
+      "manifest.html"
+    ]
     orphaned = mirror_files - expected_files
 
     if orphaned.any?
@@ -171,8 +177,9 @@ class MirrorVerifier
       puts "    Tip: Orphaned files may be from previous mirror runs"
     end
 
-    # Count actual files
-    actual_files = mirror_files - ["config.json", "urlmap.json", "identifier_cache.json"]
+    # Count actual files (exclude metadata files)
+    metadata_files = ["config.json", "urlmap.json", "identifier_cache.json", "manifest.json", "manifest.html"]
+    actual_files = mirror_files - metadata_files
     puts "  ✓ Actual files: #{actual_files.count}"
     @stats[:files] = actual_files.count
 
