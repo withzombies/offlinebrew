@@ -155,9 +155,7 @@ Every mirror includes:
 
 ## Architecture
 
-### Mirror-Based Approach ⭐ Recommended
-
-The mirror-based approach (in `mirror/`) is the full-featured solution:
+Offlinebrew uses a **mirror-based approach** that provides full-featured offline Homebrew support:
 
 - ✅ URL rewriting and redirection
 - ✅ Supports both formulas and casks
@@ -166,16 +164,7 @@ The mirror-based approach (in `mirror/`) is the full-featured solution:
 - ✅ Mirror verification
 - ✅ Manifest generation
 
-### Cache-Based Approach (Legacy)
-
-The cache-based approach (in `cache_based/`) is a simpler proof-of-concept:
-
-- ⚠️ Limited to formulas only
-- ⚠️ No cask support
-- ⚠️ Less flexible
-- ✅ Easier to understand
-
-**Recommendation**: Use the mirror-based approach for all production use.
+All functionality is in the `mirror/` directory.
 
 ## Version 2.0 Highlights
 

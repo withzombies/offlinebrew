@@ -103,10 +103,6 @@ main() {
       # brew-mirror-verify needs brew ruby to access Homebrew internals
       exec brew ruby "${MIRROR_BIN}/brew-mirror-verify" "$@"
       ;;
-    prune)
-      # Legacy tool
-      exec ruby "${MIRROR_BIN}/brew-mirror-prune" "$@"
-      ;;
     --version|-v)
       echo "offlinebrew 2.0.0"
       exit 0

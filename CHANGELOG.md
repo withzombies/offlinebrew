@@ -50,9 +50,12 @@ Major modernization release adding cask support, multi-tap configuration, and co
 
 ### Deprecated
 - Old config format (still supported, but `taps` format recommended)
+- `brew-mirror-prune` - Superseded by `brew-mirror --prune` flag
+- `cache_based/` directory - Legacy proof-of-concept, replaced by mirror-based approach
 
 ### Removed
-- N/A - Full backward compatibility maintained
+- `brew-mirror-prune` tool (functionality moved to `brew-mirror --prune`)
+- `cache_based/` directory (legacy approach, mirror-based is production solution)
 
 ## [1.0.0] - 2020-03-01
 
