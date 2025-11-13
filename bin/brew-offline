@@ -3,7 +3,7 @@
 # Provides offline mirroring and installation for Homebrew packages
 set -e
 
-OFFLINEBREW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OFFLINEBREW_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 MIRROR_BIN="${OFFLINEBREW_ROOT}/mirror/bin"
 
 # Color output
