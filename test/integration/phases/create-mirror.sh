@@ -34,9 +34,10 @@ vm_exec "mkdir -p $TEST_CONFIG_DIR" || {
   exit 1
 }
 
-# Copy config file using tart --dir mounting
-if tart run "$VM_NAME" --dir=testconfig:"$PROJECT_ROOT/test/integration/config" -- \
-  bash -c "cp /Volumes/testconfig/test-packages.txt $TEST_CONFIG_DIR/"; then
+# Copy config file to VM using tar stream
+# This approach works with tart exec and preserves file permissions
+config_dir="$PROJECT_ROOT/test/integration/config"
+if tar -C "$config_dir" -cf - test-packages.txt | tart exec -i "$VM_NAME" bash -c "cd $TEST_CONFIG_DIR && tar -xf -"; then
   ok "Config file copied to VM"
 else
   error "Failed to copy config file to VM"
@@ -79,9 +80,11 @@ vm_exec "mkdir -p $MIRROR_DIR" || {
 }
 ok "Mirror directory created: $MIRROR_DIR"
 
-# Build brew offline mirror command
+# Build brew offline mirror command using full path (PATH not yet updated in new shell session)
+# Use full path to brew-offline script since ~/.zprofile hasn't been sourced yet
 info "Creating mirror with dependencies (this may take 5-10 minutes)..."
-mirror_cmd="eval \$(/opt/homebrew/bin/brew shellenv) && brew offline mirror -d $MIRROR_DIR"
+OFFLINEBREW_BIN="/tmp/offlinebrew/bin/brew-offline"
+mirror_cmd="eval \$(/opt/homebrew/bin/brew shellenv) && $OFFLINEBREW_BIN mirror -d $MIRROR_DIR"
 
 # Add formulae if present
 if [[ -n "$formulae" ]]; then

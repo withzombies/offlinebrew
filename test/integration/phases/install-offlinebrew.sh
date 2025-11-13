@@ -28,13 +28,15 @@ vm_exec "mkdir -p $OFFLINE_BREW_DIR" || {
   exit 1
 }
 
-# Mount project root and copy to VM
-# Use tart run --dir to mount host directory as read-only
-# Then copy to writable location in VM
-info "Mounting and copying files (this may take a moment)..."
-if tart run "$VM_NAME" --dir=offlinebrew:"$PROJECT_ROOT" -- \
-  bash -c "cp -r /Volumes/offlinebrew/* $OFFLINE_BREW_DIR/"; then
-  ok "Code copied to VM successfully"
+# Copy project root to VM using tar stream (works with tart exec)
+# This preserves all file permissions and symlinks including the portable symlink fix
+info "Copying files via tar stream (preserves symlinks)..."
+
+# Create tar archive from project root and pipe to VM via tart exec with stdin
+# This approach works with tart exec without needing to mount directories
+vm_name="${TART_VM_NAME:-offlinebrew-test}"
+if tar -C "$PROJECT_ROOT" -cf - . | tart exec -i "$vm_name" bash -c "cd $OFFLINE_BREW_DIR && tar -xf -"; then
+  ok "Code copied to VM successfully (symlinks preserved)"
 else
   error "Failed to copy code to VM"
   exit 1
@@ -54,12 +56,15 @@ ok "offlinebrew PATH configured"
 # Verify brew offline command works
 info "Verifying offlinebrew installation..."
 
-# Test brew offline command (needs Homebrew shellenv)
-if vm_exec 'eval "$(/opt/homebrew/bin/brew shellenv)" && brew offline --help' | grep -q "brew offline"; then
-  ok "brew offline command works"
+# Test brew offline command - need to use the full path first (PATH not updated yet in this session)
+# since the ~/.zprofile modifications won't be loaded until next shell session
+full_path_test="$OFFLINE_BREW_DIR/bin/brew-offline --help"
+if vm_exec "$full_path_test" 2>&1 | grep -q "USAGE\|COMMANDS"; then
+  ok "brew offline command works (verified via full path)"
 else
   error "brew offline command not working"
   error "Check that offlinebrew is in PATH and Homebrew is available"
+  error "Test command: $full_path_test"
   exit 1
 fi
 

@@ -14,7 +14,9 @@ source "$SCRIPT_DIR/../lib/test-helpers.sh"
 
 # VM Configuration
 VM_NAME="offlinebrew-test"
-BASE_IMAGE="ghcr.io/cirruslabs/macos-sonoma-vanilla:latest"
+# Use base image (not vanilla) to get Tart Guest Agent pre-installed
+# Vanilla images don't have the guest agent, so tart exec won't work
+BASE_IMAGE="ghcr.io/cirruslabs/macos-sonoma-base:latest"
 VM_CPUS=4
 VM_MEMORY=8192  # MB
 
@@ -102,15 +104,36 @@ if [[ $elapsed -ge $max_wait ]]; then
   exit 1
 fi
 
-# Final verification
+# Final verification - VM is running but we need to wait for guest agent
 info "Verifying VM status..."
-if tart list | grep "$VM_NAME.*running"; then
-  ok "VM setup complete: $VM_NAME"
-  ok "VM is running and ready for testing"
-  exit 0
-else
+if ! tart list | grep -q "$VM_NAME.*running"; then
   error "VM not found in running state after setup"
   error "VM status:"
   tart list | grep "$VM_NAME" || echo "  VM not found"
   exit 1
 fi
+
+# Wait for Tart Guest Agent to be ready (needed for tart exec)
+info "Waiting for Tart Guest Agent to be ready..."
+max_agent_wait=60
+agent_elapsed=0
+while [[ $agent_elapsed -lt $max_agent_wait ]]; do
+  if tart exec "$VM_NAME" true >/dev/null 2>&1; then
+    ok "Tart Guest Agent is ready"
+    break
+  fi
+
+  # Still waiting
+  info "  Waiting for guest agent... ($agent_elapsed/$max_agent_wait seconds)"
+  sleep 2
+  agent_elapsed=$((agent_elapsed + 2))
+done
+
+if [[ $agent_elapsed -ge $max_agent_wait ]]; then
+  error "Tart Guest Agent failed to become ready within $max_agent_wait seconds"
+  exit 1
+fi
+
+ok "VM setup complete: $VM_NAME"
+ok "VM is running and ready for testing"
+exit 0

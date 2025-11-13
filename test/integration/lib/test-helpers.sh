@@ -68,7 +68,11 @@ assert_exit_code() {
 # VM communication helpers
 vm_exec() {
   local vm_name="${TART_VM_NAME:-offlinebrew-test}"
-  tart run "$vm_name" -- bash -c "$*"
+  local cmd="$1"
+
+  # Execute command in VM using Tart Guest Agent (available in Cirrus Labs images)
+  # Note: Use -i for stdin instead of -t to avoid PTY issues
+  tart exec -i "$vm_name" bash -c "$cmd"
 }
 
 vm_copy() {
