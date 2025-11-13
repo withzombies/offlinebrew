@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# External command for Homebrew: brew offline
+# Provides offline mirroring and installation for Homebrew packages
+set -e
+
+OFFLINEBREW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MIRROR_BIN="${OFFLINEBREW_ROOT}/mirror/bin"
+
+# Color output
+if [[ -t 1 ]]; then
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  BLUE='\033[0;34m'
+  BOLD='\033[1m'
+  NC='\033[0m' # No Color
+else
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  BOLD=''
+  NC=''
+fi
+
+# Print usage
+usage() {
+  cat <<EOF
+${BOLD}brew offline${NC} - Offline Homebrew mirroring and installation
+
+${BOLD}USAGE:${NC}
+  brew offline <command> [options]
+
+${BOLD}COMMANDS:${NC}
+  ${GREEN}mirror${NC}      Create or update an offline mirror of Homebrew packages
+  ${GREEN}install${NC}     Install packages from an offline mirror
+  ${GREEN}verify${NC}      Verify mirror integrity and completeness
+  ${GREEN}help${NC}        Show this help message
+
+${BOLD}EXAMPLES:${NC}
+  # Create a mirror with specific packages
+  brew offline mirror -d /path/to/mirror -f wget,jq --casks firefox
+
+  # Update an existing mirror
+  brew offline mirror -d /path/to/mirror --update
+
+  # Install from mirror
+  brew offline install wget
+
+  # Install a cask from mirror
+  brew offline install --cask firefox
+
+  # Verify mirror integrity
+  brew offline verify /path/to/mirror
+
+${BOLD}DOCUMENTATION:${NC}
+  For detailed documentation, see:
+    ${OFFLINEBREW_ROOT}/README.md
+    ${OFFLINEBREW_ROOT}/mirror/README.md
+
+EOF
+}
+
+# Print help for specific commands
+command_help() {
+  local cmd="$1"
+  case "$cmd" in
+    mirror)
+      brew ruby "${MIRROR_BIN}/brew-mirror" --help
+      ;;
+    install)
+      ruby "${MIRROR_BIN}/brew-offline-install" --help
+      ;;
+    verify)
+      brew ruby "${MIRROR_BIN}/brew-mirror-verify" --help
+      ;;
+    *)
+      usage
+      ;;
+  esac
+}
+
+# Main command dispatcher
+main() {
+  if [[ $# -eq 0 ]] || [[ "$1" == "help" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+    usage
+    exit 0
+  fi
+
+  local command="$1"
+  shift
+
+  case "$command" in
+    mirror)
+      # brew-mirror needs brew ruby to access Homebrew internals
+      exec brew ruby "${MIRROR_BIN}/brew-mirror" "$@"
+      ;;
+    install)
+      # brew-offline-install can run with regular ruby
+      exec ruby "${MIRROR_BIN}/brew-offline-install" "$@"
+      ;;
+    verify)
+      # brew-mirror-verify needs brew ruby to access Homebrew internals
+      exec brew ruby "${MIRROR_BIN}/brew-mirror-verify" "$@"
+      ;;
+    prune)
+      # Legacy tool
+      exec ruby "${MIRROR_BIN}/brew-mirror-prune" "$@"
+      ;;
+    --version|-v)
+      echo "offlinebrew 2.0.0"
+      exit 0
+      ;;
+    *)
+      echo -e "${RED}Error:${NC} Unknown command '${command}'" >&2
+      echo "" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
