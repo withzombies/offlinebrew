@@ -227,9 +227,12 @@ options[:taps].each do |tap_name|
   expanded_tap_name = TapManager.expand_tap_name(tap_name)
 
   unless TapManager.tap_installed?(expanded_tap_name)
-    tap_dir = TapManager.tap_directory(expanded_tap_name)
     opoo "Tap not installed: #{expanded_tap_name}"
-    opoo "  Expected location: #{tap_dir}"
+    # Only show expected location for non-bundled taps
+    unless ["homebrew/homebrew-core", "homebrew/homebrew-cask"].include?(expanded_tap_name)
+      tap_dir = TapManager.tap_directory(expanded_tap_name)
+      opoo "  Expected location: #{tap_dir}"
+    end
     next
   end
 
