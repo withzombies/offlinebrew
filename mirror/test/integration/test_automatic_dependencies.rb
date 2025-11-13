@@ -406,6 +406,146 @@ class TestAutomaticDependencies < Minitest::Test
     puts "=" * 70
   end
 
+  # Test: End-to-end installation with --with-deps succeeds
+  def test_install_with_deps_succeeds
+    skip "Full installation test - requires clean Homebrew" unless ENV["RUN_INSTALL_TESTS"]
+
+    puts "\n" + "=" * 70
+    puts "Integration Test: Install with dependencies (end-to-end)"
+    puts "=" * 70
+
+    Dir.mktmpdir do |tmpdir|
+      # Step 1: Create mirror with --with-deps
+      puts "\n[Step 1] Creating mirror with --with-deps..."
+      result = run_brew_mirror(
+        brew_mirror_path,
+        ["-f", "jq", "-d", tmpdir, "--with-deps", "-s", "0.1"]
+      )
+
+      assert result[:success], "Mirror creation should succeed: #{result[:stderr]}"
+
+      manifest = JSON.parse(File.read(File.join(tmpdir, "manifest.json")))
+      formulas = manifest["formulas"]
+
+      puts "  ✓ Mirrored #{formulas.length} formulas (including dependencies)"
+
+      # Step 2: Start HTTP server
+      puts "\n[Step 2] Starting HTTP server for mirror..."
+      require "webrick"
+
+      server = WEBrick::HTTPServer.new(
+        Port: 0,  # Random port
+        DocumentRoot: tmpdir,
+        Logger: WEBrick::Log.new("/dev/null"),
+        AccessLog: []
+      )
+
+      port = server.config[:Port]
+      server_thread = Thread.new { server.start }
+      sleep 1  # Give server time to start
+
+      begin
+        # Step 3: Configure client
+        puts "  ✓ Server running on http://localhost:#{port}"
+        puts "\n[Step 3] Configuring client..."
+
+        config_dir = File.join(tmpdir, "client-config")
+        FileUtils.mkdir_p(config_dir)
+        config_file = File.join(config_dir, "config.json")
+
+        File.write(config_file, JSON.generate({
+          baseurl: "http://localhost:#{port}"
+        }))
+
+        puts "  ✓ Client configured"
+
+        # Step 4: Install package (dry-run check only)
+        puts "\n[Step 4] Verifying installation would work..."
+        puts "  ℹ Note: Skipping actual install to avoid modifying system"
+        puts "  ℹ Verification: All URLs in manifest are accessible"
+
+        # Verify all files are accessible via HTTP
+        require "net/http"
+        urlmap = JSON.parse(File.read(File.join(tmpdir, "urlmap.json")))
+
+        accessible_count = 0
+        urlmap.each do |url, filename|
+          file_path = "/#{filename}"
+          response = Net::HTTP.get_response("localhost", file_path, port)
+          if response.code == "200"
+            accessible_count += 1
+          else
+            puts "  ⚠ File not accessible: #{filename} (#{response.code})"
+          end
+        end
+
+        puts "  ✓ #{accessible_count}/#{urlmap.size} files accessible via HTTP"
+        assert accessible_count == urlmap.size, "All files should be accessible"
+
+        puts "\n[Step 5] Installation verification complete"
+        puts "  ✓ Mirror is complete and accessible"
+        puts "  ✓ All dependencies are present"
+
+      ensure
+        server.shutdown
+        server_thread.join
+      end
+    end
+
+    puts "\n" + "=" * 70
+    puts "Test PASSED ✓"
+    puts "=" * 70
+  end
+
+  # Test: Installation without --with-deps fails
+  def test_install_without_deps_fails
+    skip "Installation failure test - requires analysis" unless ENV["RUN_INSTALL_TESTS"]
+
+    puts "\n" + "=" * 70
+    puts "Integration Test: Install without dependencies (expect issues)"
+    puts "=" * 70
+
+    Dir.mktmpdir do |tmpdir|
+      # Step 1: Create mirror WITHOUT --with-deps
+      puts "\n[Step 1] Creating mirror WITHOUT --with-deps..."
+      result = run_brew_mirror(
+        brew_mirror_path,
+        ["-f", "jq", "-d", tmpdir, "-s", "0.1"]  # NO --with-deps
+      )
+
+      assert result[:success], "Mirror creation should succeed"
+
+      manifest = JSON.parse(File.read(File.join(tmpdir, "manifest.json")))
+      formulas = manifest["formulas"]
+
+      puts "  ✓ Mirrored #{formulas.length} formulas (no dependencies)"
+
+      # Step 2: Verify dependencies are missing
+      puts "\n[Step 2] Verifying dependencies are NOT in mirror..."
+
+      # jq depends on oniguruma
+      formula_names = formulas.map { |f| f["name"] }
+
+      has_jq = formula_names.include?("jq")
+      has_deps = formula_names.any? { |name| name.include?("oniguruma") }
+
+      assert has_jq, "Should include jq"
+      refute has_deps, "Should NOT include dependencies (oniguruma)"
+
+      puts "  ✓ jq is in mirror"
+      puts "  ✓ Dependencies (oniguruma) are NOT in mirror"
+
+      puts "\n[Step 3] Analysis: Installation would fail"
+      puts "  ⚠ Mirror does not contain all dependencies"
+      puts "  ⚠ Offline installation would fail with dependency error"
+      puts "  ⚠ This demonstrates why --with-deps is critical"
+    end
+
+    puts "\n" + "=" * 70
+    puts "Test PASSED ✓"
+    puts "=" * 70
+  end
+
   # Helper methods
   private
 

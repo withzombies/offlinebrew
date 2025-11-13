@@ -275,6 +275,7 @@ manifest = {
   },
   formulae: existing_manifest ? existing_manifest[:formulae].dup : [],
   casks: existing_manifest ? existing_manifest[:casks].dup : [],
+  dependency_resolution: nil,  # Will be populated if --with-deps is used
 }
 
 # In config-only mode, write empty urlmap and exit early
@@ -393,6 +394,8 @@ cask_formula_deps = []
 # We do this first so we can include formula dependencies in the formula loop
 if options[:with_deps] && options[:casks]
   ohai "Resolving cask dependencies first..."
+  original_cask_tokens = options[:casks].dup  # Save original request
+
   resolved = DependencyResolver.resolve_casks(
     options[:casks],
     include_build: options[:include_build]
@@ -407,12 +410,24 @@ if options[:with_deps] && options[:casks]
   if cask_formula_deps.any?
     ohai "Found #{cask_formula_deps.count} formula dependencies for casks"
   end
+
+  # Record cask dependency resolution in manifest
+  if original_cask_tokens.any?
+    manifest[:dependency_resolution] = {
+      enabled: true,
+      include_build: options[:include_build],
+      requested_casks: original_cask_tokens,
+      resolved_casks: resolved[:casks],
+      cask_formula_deps: cask_formula_deps,
+    }
+  end
 end
 
 # Now resolve formula dependencies
 if options[:with_deps] && options[:iterator] != Formula
   # User specified specific formulas with -f and wants dependencies
   formula_names = options[:iterator].map(&:name)
+  original_formula_names = formula_names.dup  # Save original request
 
   # Add cask formula dependencies
   formula_names += cask_formula_deps
@@ -426,13 +441,33 @@ if options[:with_deps] && options[:iterator] != Formula
   )
 
   # Update iterator with resolved formulas
-  options[:iterator] = resolved_names.map { |name| Formula[name] }
+  # Use filter_map to handle formulas that may have become unavailable
+  options[:iterator] = resolved_names.filter_map do |name|
+    begin
+      Formula[name]
+    rescue FormulaUnavailableError
+      opoo "Formula #{name} no longer available, skipping"
+      nil
+    end
+  end
 
   original_count = formula_names.count - cask_formula_deps.count
   added_count = resolved_names.count - original_count
   if added_count > 0
     ohai "Added #{added_count} formula dependencies to mirror list"
   end
+
+  # Record dependency resolution in manifest (merge with any cask data)
+  manifest[:dependency_resolution] ||= {}
+  manifest[:dependency_resolution].merge!({
+    enabled: true,
+    include_build: options[:include_build],
+    requested_formulas: original_formula_names - cask_formula_deps,
+    resolved_formulas: resolved_names,
+    auto_added_count: added_count,
+  })
+  # Add cask_formula_deps if not already present
+  manifest[:dependency_resolution][:cask_formula_deps] ||= cask_formula_deps
 elsif options[:with_deps] && options[:iterator] == Formula && cask_formula_deps.any?
   # Mirroring all formulas - but we have cask formula deps
   # They'll be included anyway since we're mirroring everything

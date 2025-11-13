@@ -132,16 +132,33 @@ class TestDependencyResolver < Minitest::Test
     refute_includes result, "nonexistent-formula-12345"
   end
 
-  # Test: Circular dependency handling
-  # Note: Homebrew shouldn't have circular dependencies, but we should handle it gracefully
-  def test_circular_dependency_protection
-    # Our visited tracking should prevent infinite loops
-    # This is more of a structural test - the algorithm should complete
+  # Test: Algorithm completes for complex dependency trees
+  # Note: This tests that the algorithm completes without hanging for formulas
+  # with many dependencies. The visited tracking prevents infinite loops.
+  def test_algorithm_completes_for_complex_trees
+    # Python has a complex dependency tree (many dependencies)
+    # This verifies the algorithm completes without hanging
     result = DependencyResolver.resolve_formulas(["python@3.11"])
 
     # Should complete without hanging
     assert result.is_a?(Array)
     assert result.size > 0
+    # Python typically has many dependencies
+    assert result.size > 5, "Python should have multiple dependencies"
+  end
+
+  # Test: Visited tracking prevents infinite recursion
+  # This is a structural test - verifies visited Set prevents processing same formula twice
+  def test_visited_tracking_prevents_reprocessing
+    # Resolve a formula with shared dependencies (wget and curl both depend on openssl)
+    result = DependencyResolver.resolve_formulas(["wget", "curl"])
+
+    # openssl should appear exactly once in result (not twice)
+    openssl_count = result.count { |name| name.include?("openssl") }
+    assert_equal 1, openssl_count, "Shared dependencies should appear only once"
+
+    # Verify no duplicates in result
+    assert_equal result, result.uniq, "Result should not contain duplicates"
   end
 
   # Test: Large dependency tree
@@ -208,20 +225,55 @@ class TestDependencyResolver < Minitest::Test
     refute_includes result[:casks], "nonexistent-cask-12345"
   end
 
-  # Performance test
-  def test_dependency_resolution_performance
+  # Performance test: Small dependency tree (target: < 500ms)
+  def test_performance_small_dependency_tree
     skip "Performance test - only run on demand" unless ENV["RUN_PERFORMANCE_TESTS"]
 
     require "benchmark"
 
+    # wget has ~5 dependencies - should resolve quickly
     time = Benchmark.realtime do
-      DependencyResolver.resolve_formulas(["wget", "jq", "curl", "git"])
+      DependencyResolver.resolve_formulas(["wget"])
     end
 
-    # Should complete in reasonable time (< 5 seconds)
-    assert time < 5.0, "Dependency resolution took too long: #{time}s"
+    puts "\n  Performance: Resolved wget (5 deps) in #{(time * 1000).round(1)}ms"
 
-    puts "\n  Performance: Resolved 4 formulas in #{time.round(3)}s"
+    # Target: < 500ms
+    assert time < 0.5, "wget resolution took #{(time * 1000).round(1)}ms, target is < 500ms"
+  end
+
+  # Performance test: Large dependency tree (target: < 1s)
+  def test_performance_large_dependency_tree
+    skip "Performance test - only run on demand" unless ENV["RUN_PERFORMANCE_TESTS"]
+
+    require "benchmark"
+
+    # python has ~20+ dependencies - larger tree
+    time = Benchmark.realtime do
+      DependencyResolver.resolve_formulas(["python@3.11"])
+    end
+
+    puts "\n  Performance: Resolved python@3.11 (20+ deps) in #{(time * 1000).round(1)}ms"
+
+    # Target: < 1s
+    assert time < 1.0, "python resolution took #{(time * 1000).round(1)}ms, target is < 1000ms"
+  end
+
+  # Performance test: Multiple formulas with shared deps
+  def test_performance_shared_dependencies
+    skip "Performance test - only run on demand" unless ENV["RUN_PERFORMANCE_TESTS"]
+
+    require "benchmark"
+
+    # wget, curl, git - all share some dependencies
+    time = Benchmark.realtime do
+      DependencyResolver.resolve_formulas(["wget", "curl", "git"])
+    end
+
+    puts "\n  Performance: Resolved 3 formulas with shared deps in #{(time * 1000).round(1)}ms"
+
+    # Should complete in < 1s even with deduplication
+    assert time < 1.0, "Shared dependency resolution took #{(time * 1000).round(1)}ms, target is < 1000ms"
   end
 
   # Debug mode test
