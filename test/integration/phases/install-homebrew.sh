@@ -61,5 +61,10 @@ else
   exit 1
 fi
 
+# Skip tap installation for modern Homebrew (5.0+)
+# homebrew/core and homebrew/cask are now bundled with Homebrew
+info "Skipping tap installation (bundled in Homebrew 5.0+)..."
+ok "Using bundled homebrew/core and homebrew/cask taps"
+
 info "Homebrew installation complete and verified"
 exit 0

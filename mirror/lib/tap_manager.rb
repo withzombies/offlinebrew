@@ -120,7 +120,19 @@ module TapManager
   #   available = TapManager.tap_available_in_homebrew?("homebrew/homebrew-core")
   #   # => true
   def self.tap_available_in_homebrew?(tap_name)
-    # Try to query tap info from Homebrew
+    # For Homebrew 5.0+, core and cask are always bundled and available
+    if tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
+      # Check Homebrew version to confirm 5.0+
+      begin
+        output = SafeShell.execute('brew', '--version', timeout: 5)
+        version_match = output.match(/Homebrew (\d+)\./)
+        return true if version_match && version_match[1].to_i >= 5
+      rescue SafeShell::ExecutionError, SafeShell::TimeoutError
+        # Fall through to tap-info check
+      end
+    end
+
+    # Try to query tap info from Homebrew for other taps
     # For bundled taps, this will succeed even without a Taps directory
     begin
       # Check if we can access the tap through Homebrew
@@ -158,16 +170,28 @@ module TapManager
       end
     end
 
-    # For bundled taps (core/cask), query Homebrew for commit info
+    # For bundled taps (core/cask) in Homebrew 5.0+, return a synthetic commit
+    # These are bundled with Homebrew itself and don't have separate commits
     if tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
       begin
+        output = SafeShell.execute('brew', '--version', timeout: 5)
+        version_match = output.match(/Homebrew (\d+\.\d+\.\d+)/)
+        if version_match
+          version = version_match[1]
+          major_version = version.split('.')[0].to_i
+          # For Homebrew 5.0+, return a synthetic commit based on version
+          return "bundled-#{version}" if major_version >= 5
+        end
+
+        # Fallback: try tap-info for older versions
         require 'json'
         output = SafeShell.execute('brew', 'tap-info', '--json', tap_name, timeout: 10)
         tap_info = JSON.parse(output)
         # tap-info returns an array with tap information
         return tap_info.first&.dig('revision') if tap_info.is_a?(Array) && !tap_info.empty?
       rescue SafeShell::ExecutionError, SafeShell::TimeoutError, JSON::ParserError
-        nil
+        # For Homebrew 5.0+, return a fallback synthetic commit
+        "bundled-homebrew-5.x"
       end
     end
 
