@@ -172,25 +172,28 @@ config[:taps] = {}
 
 # Process each configured tap
 options[:taps].each do |tap_name|
-  unless TapManager.tap_installed?(tap_name)
-    opoo "Tap not installed: #{tap_name}, skipping"
+  # Expand shorthand tap names (e.g., "core" -> "homebrew/homebrew-core")
+  expanded_tap_name = TapManager.expand_tap_name(tap_name)
+
+  unless TapManager.tap_installed?(expanded_tap_name)
+    opoo "Tap not installed: #{expanded_tap_name}, skipping"
     next
   end
 
-  commit = TapManager.tap_commit(tap_name)
+  commit = TapManager.tap_commit(expanded_tap_name)
   unless commit
-    opoo "Could not get commit for #{tap_name}, skipping"
+    opoo "Could not get commit for #{expanded_tap_name}, skipping"
     next
   end
 
-  tap_type = TapManager.tap_type(tap_name)
+  tap_type = TapManager.tap_type(expanded_tap_name)
 
-  config[:taps][tap_name] = {
+  config[:taps][expanded_tap_name] = {
     "commit" => commit,
     "type" => tap_type,
   }
 
-  ohai "Will mirror #{tap_name} (#{tap_type}) at commit #{commit[0..7]}"
+  ohai "Will mirror #{expanded_tap_name} (#{tap_type}) at commit #{commit[0..7]}"
 end
 
 # Ensure at least one tap configured
