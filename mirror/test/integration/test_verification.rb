@@ -4,6 +4,7 @@
 require_relative "../test_helper"
 require "tmpdir"
 require "json"
+require "open3"
 
 # TestVerification: Integration tests for brew-mirror-verify
 #
