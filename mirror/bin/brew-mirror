@@ -609,7 +609,10 @@ File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
 # Verify mirror if requested
 if options[:verify]
   ohai "Verifying mirror integrity..."
+  puts ""
   verify_script = File.expand_path("brew-mirror-verify", __dir__)
-  result = system("brew", "ruby", verify_script, "--", options[:directory])
-  exit 1 unless result
+
+  # Execute verification and capture exit status
+  # Using exec replacement instead of system for better output handling
+  exec("brew", "ruby", verify_script, "--", options[:directory])
 end
