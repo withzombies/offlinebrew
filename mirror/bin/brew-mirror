@@ -19,6 +19,30 @@ require_relative "../lib/dependency_resolver"
 # We need Homebrew's libraries.
 abort "Make sure to run me via `brew ruby`!" unless Object.const_defined? :Homebrew
 
+# Define Homebrew CLI output methods if not available
+# These are normally provided by Homebrew's command infrastructure
+unless defined?(ohai)
+  def ohai(message)
+    puts message
+  end
+
+  def opoo(message)
+    warn message
+  end
+
+  def onoe(message)
+    warn "Error: #{message}"
+  end
+
+  def odebug(message)
+    puts "Debug: #{message}" if ENV["HOMEBREW_DEBUG"]
+  end
+
+  def odie(message)
+    abort "Error: #{message}"
+  end
+end
+
 # Load Cask API if available
 begin
   require "cask/cask_loader"
