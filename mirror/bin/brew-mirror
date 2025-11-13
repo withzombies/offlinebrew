@@ -610,9 +610,24 @@ File.write identifier_cache_file, JSON.pretty_generate(identifier_cache)
 if options[:verify]
   ohai "Verifying mirror integrity..."
   puts ""
+
+  # Load and execute the verify script directly
+  # This works because we're already in brew ruby context
   verify_script = File.expand_path("brew-mirror-verify", __dir__)
 
-  # Execute verification and capture exit status
-  # Using exec replacement instead of system for better output handling
-  exec("brew", "ruby", verify_script, "--", options[:directory])
+  # Set ARGV for the verify script and load it
+  old_argv = ARGV.dup
+  ARGV.clear
+  ARGV << options[:directory]
+
+  begin
+    load verify_script
+  rescue SystemExit => e
+    # Verify script calls exit, propagate the exit code
+    exit e.status
+  ensure
+    # Restore original ARGV (though we'll exit anyway)
+    ARGV.clear
+    ARGV.concat(old_argv)
+  end
 end
