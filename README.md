@@ -105,14 +105,14 @@ The result: Homebrew works normally, but all downloads come from your local mirr
 ## Requirements
 
 ### System Requirements
-- **OS**: macOS 10.15+ or Linux with Homebrew
+- **OS**: macOS 12.0 or later
 - **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
-- **Ruby**: 2.6+ (included with macOS)
+- **Ruby**: 3.0+ (included with macOS)
 - **Python**: 3.x (for serving mirrors)
 - **Disk**: 1-100GB depending on mirror size
 
 ### Software Requirements
-- Homebrew (latest version recommended)
+- **Homebrew**: 5.0 or later (**required** - older versions not supported)
 - Git
 - curl (included with macOS)
 
@@ -197,6 +197,55 @@ All functionality is in the `mirror/` directory.
 - **Comprehensive tests** - 50+ integration tests
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+## Migrating from Previous Versions
+
+### Upgrading to v2.0 (Homebrew 5.0+ Required)
+
+**Breaking Changes**: Version 2.0 requires Homebrew 5.0 or later. The legacy single-tap config format is no longer supported.
+
+If you're using an older version of offlinebrew:
+
+#### 1. Upgrade Homebrew First
+
+```bash
+brew update && brew upgrade
+brew --version  # Should show 5.0.0 or higher
+```
+
+If you're on Homebrew 4.x or earlier, you'll need to upgrade to Homebrew 5.0+.
+
+#### 2. Recreate Your Mirrors
+
+The old single-tap config format is no longer supported. You'll need to recreate mirrors with the new format:
+
+```bash
+# Old format (no longer works):
+# {"commit": "abc123", "formulae": ["wget"]}
+
+# New format (required):
+brew offline mirror --directory /path/to/mirror \
+  --formulae wget,curl \
+  --casks firefox
+```
+
+#### 3. Update Configuration Files
+
+If you have existing config files, update them to use the new multi-tap format:
+
+```json
+{
+  "taps": {
+    "homebrew/homebrew-core": {
+      "commit": "bundled-5.0",
+      "type": "formula"
+    }
+  },
+  "formulae": ["wget", "curl"]
+}
+```
+
+See [MIGRATION.md](MIGRATION.md) for detailed migration instructions.
 
 ## Contributing
 

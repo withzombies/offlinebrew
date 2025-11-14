@@ -88,7 +88,7 @@ module TapManager
 
   # Check if tap is installed
   #
-  # Modern Homebrew (4.0+) bundles core and cask taps instead of installing
+  # Modern Homebrew (5.0+) bundles core and cask taps instead of installing
   # them as separate directories. This method handles both traditional tapped
   # installations and bundled taps.
   #

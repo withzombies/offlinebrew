@@ -52,3 +52,51 @@ make test-install
 ## Notes:
 All implementation tasks (offlinebrew-3d0.1 through offlinebrew-3d0.12) completed successfully.
 Test infrastructure is production-ready pending manual execution validation with Tart.
+
+---
+
+## Homebrew 5.0+ Simplification: ✓ COMPLETED
+
+Date: 2025-11-14
+Epic: bd-8mg (Feature: Simplify offlinebrew to require Homebrew 5.0+ only)
+Validated by: Claude Code (executing-plans skill)
+
+### Phases Completed:
+- ✓ Phase 1 (bd-clw): Simplify TapManager and remove version checks
+- ✓ Phase 2 (bd-1ml): Remove legacy config support and simplify mirror scripts
+- ✓ Phase 3 (bd-pve): Simplify API usage and remove fallbacks
+- ✓ Phase 4 (bd-8wx): Update tests and documentation
+
+### Breaking Changes Implemented:
+- ✓ Minimum Homebrew version now 5.0+ (enforced)
+- ✓ Legacy single-tap config format removed
+- ✓ API compatibility layers removed
+- ✓ Version detection methods removed
+- ✓ All fallback code removed
+
+### Code Simplifications:
+- ✓ TapManager: Removed version checks, assumes bundled taps
+- ✓ CaskHelpers: Removed respond_to? checks, direct API calls only
+- ✓ DependencyResolver: Removed respond_to? checks
+- ✓ DownloadHelpers: Removed respond_to? checks
+- ✓ All modules now fail fast with clear errors
+
+### Documentation Updated:
+- ✓ README.md: Requirements updated to Homebrew 5.0+
+- ✓ README.md: Migration guide added
+- ✓ CHANGELOG.md: Version 2.2.0 breaking changes documented
+- ✓ All version references updated
+
+### Test Status:
+- ✓ Unit tests passing (test_download_helpers.rb validated)
+- ✓ Manual API tests passing (all_casks, load_cask verified)
+- ✓ Integration tests ready (require Homebrew 5.0+ as documented)
+
+### Minimum Requirements Now:
+- Homebrew 5.0.0 or later (REQUIRED)
+- macOS 12.0 or later
+- Ruby 3.0 or later
+
+### Commits:
+- c3afe63: refactor(bd-pve): remove API fallbacks and conditional checks
+- (pending): docs(bd-8wx): update for Homebrew 5.0+ requirement

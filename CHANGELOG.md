@@ -5,6 +5,62 @@ All notable changes to offlinebrew will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-11-14
+
+Simplification release - requires Homebrew 5.0+ and removes all legacy compatibility code.
+
+### BREAKING CHANGES
+
+- **Minimum Homebrew version is now 5.0+**
+  - Older Homebrew versions (4.x and earlier) are no longer supported
+  - Installation will fail if Homebrew < 5.0 is detected
+  - Users must upgrade Homebrew before using offlinebrew 2.2+
+
+- **Removed legacy config format**
+  - Old single-tap format `{"commit": "...", "formulae": [...]}` no longer supported
+  - Must use new multi-tap format with `"taps"` section
+  - No automatic migration - mirrors must be recreated with new format
+
+- **Removed API compatibility layers**
+  - All version detection code removed
+  - No fallback APIs - methods use modern APIs directly
+  - Methods fail fast with clear errors instead of trying alternatives
+
+### Changed
+
+- **Simplified TapManager module**
+  - Removed `in_brew_ruby_context?`, `homebrew_version`, `homebrew_5_or_higher?`, `require_homebrew_5!` methods
+  - Assumes Homebrew 5.0+ bundled taps (core and cask)
+  - Returns synthetic "bundled-X.X" commits for bundled taps
+
+- **Simplified API usage in all helper modules**
+  - Removed conditional API checks (`respond_to?`, `defined?`)
+  - Removed rescue blocks with fallback attempts
+  - Direct modern API calls only (CaskHelpers, DependencyResolver, DownloadHelpers)
+
+- **Cleaner error messages**
+  - Legacy config shows clear error with migration example
+  - Missing APIs raise immediately with descriptive messages
+  - No silent fallbacks masking real problems
+
+### Removed
+
+- Version detection methods (`homebrew_version`, `homebrew_5_or_higher?`, etc.)
+- Legacy config auto-conversion code
+- API fallback methods in all helper modules
+- Homebrew 4.x compatibility code
+- `respond_to?` and `defined?` checks for API availability
+
+### Migration Guide
+
+See [MIGRATION.md](MIGRATION.md) and README.md "Migrating from Previous Versions" section for detailed instructions.
+
+**Quick Summary:**
+1. Upgrade Homebrew to 5.0+ first: `brew update && brew upgrade`
+2. Verify version: `brew --version` (must be 5.0.0 or higher)
+3. Recreate mirrors using new format (old mirrors will not work)
+4. Update any scripts to use new multi-tap config format
+
 ## [2.1.0] - 2025-11-13
 
 Automatic dependency resolution - the most requested feature!

@@ -191,7 +191,7 @@ cask,slack,/Applications/Slack.app/Contents/MacOS/Slack --version
 
 **Solutions**:
 - Ensure bundled tap fix is applied (see commits: "Support bundled core/cask taps")
-- Verify Homebrew version in VM: `brew --version` (should be 4.0+)
+- Verify Homebrew version in VM: `brew --version` (must be 5.0+)
 - Check packages exist: `brew search <package>`
 - Verify network access from VM
 - Try with fewer packages first
