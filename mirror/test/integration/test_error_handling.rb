@@ -207,14 +207,14 @@ class TestErrorHandling < Minitest::Test
     puts "=" * 70
   end
 
-  # Test: Backward compatibility with old config format
-  def test_backward_compatible_config
+  # Test: Legacy format rejection
+  def test_legacy_format_rejection
     puts "\n" + "=" * 70
-    puts "Integration Test: Backward Compatible Config"
+    puts "Integration Test: Legacy Format Rejection"
     puts "=" * 70
 
     Dir.mktmpdir do |tmpdir|
-      puts "\n[Test] Testing old config format..."
+      puts "\n[Test] Testing old config format rejection..."
 
       offlinebrew_dir = File.join(tmpdir, ".offlinebrew")
       Dir.mkdir(offlinebrew_dir)
@@ -238,24 +238,23 @@ class TestErrorHandling < Minitest::Test
         env: { "REAL_HOME" => tmpdir }
       )
 
-      # Should attempt to fetch remote config (will fail but that's OK)
-      # The important thing is it doesn't crash parsing the old format
+      # Should reject the old format with clear error message
       error_output = result[:stdout] + result[:stderr]
 
-      # Should NOT have JSON parsing errors
-      refute_match(/unexpected token|invalid json/i, error_output,
-        "Should not have JSON parsing errors with old config format")
+      # Should have legacy format error
+      assert_match(/Legacy config format detected/i, error_output,
+        "Should detect and reject legacy config format")
 
-      # Should proceed to try to fetch remote config
-      assert_match(/Failed to open TCP connection|Connection refused/i, error_output,
-        "Should attempt to fetch remote config")
+      # Should NOT proceed to try to fetch remote config
+      refute_match(/Failed to open TCP connection|Connection refused/i, error_output,
+        "Should not attempt to fetch remote config after rejecting old format")
 
-      puts "  ✓ Old config format parsed successfully"
-      puts "  ✓ Backward compatibility maintained"
+      puts "  ✓ Old config format rejected correctly"
+      puts "  ✓ Clear error message displayed"
     end
 
     puts "\n" + "=" * 70
-    puts "Backward Compatible Config Test: PASSED ✓"
+    puts "Legacy Format Rejection Test: PASSED ✓"
     puts "=" * 70
   end
 
