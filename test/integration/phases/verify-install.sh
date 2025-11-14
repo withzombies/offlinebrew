@@ -64,7 +64,7 @@ while IFS=, read -r type name version_cmd; do
   fi
 
   # Execute install command
-  if vm_exec "$install_cmd" 2>&1 | grep -q "Error:"; then
+  if vm_exec "$install_cmd" 2>&1 | grep -qE "(Error:|Fatal:)"; then
     error "  Failed to install $name"
     fail_count=$((fail_count + 1))
     echo ""

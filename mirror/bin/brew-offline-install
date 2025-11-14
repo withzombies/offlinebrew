@@ -84,24 +84,21 @@ unless HomebrewPaths.homebrew_installed?
   abort "Fatal: Homebrew is not installed or not in PATH"
 end
 
-# Verify homebrew-core tap exists
-unless Dir.exist?(CORE_TAP_DIR)
-  abort "Fatal: homebrew-core tap not found at #{CORE_TAP_DIR}"
-end
-
 # On exit, return all taps to their master branches.
 # It shouldn't actually hurt us to stay at whatever prior revision
 # we rewind to, but this should keep the number of warnings raised
 # by Homebrew down.
 at_exit do
-  # Restore core tap
-  Dir.chdir CORE_TAP_DIR do
-    SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
+  # Restore core tap (only if it's a git repository, not bundled)
+  if Dir.exist?(CORE_TAP_DIR) && Dir.exist?(File.join(CORE_TAP_DIR, '.git'))
+    Dir.chdir CORE_TAP_DIR do
+      SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
+    end
   end
 
-  # Restore cask tap if it exists
+  # Restore cask tap if it exists and is a git repository
   cask_tap_dir = HomebrewPaths.cask_tap_path
-  if Dir.exist?(cask_tap_dir)
+  if Dir.exist?(cask_tap_dir) && Dir.exist?(File.join(cask_tap_dir, '.git'))
     Dir.chdir cask_tap_dir do
       SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
     end
@@ -313,8 +310,20 @@ taps.each do |tap_name, tap_info|
               HomebrewPaths.tap_path(user, repo)
             end
 
+  # Skip git operations for bundled taps (Homebrew 5.0+)
+  if tap_commit.start_with?("bundled-")
+    puts "  #{tap_name} is bundled at #{tap_commit} (no checkout needed)"
+    next
+  end
+
   unless Dir.exist?(tap_dir)
     warn "Warning: Tap not found: #{tap_name} at #{tap_dir}, skipping"
+    next
+  end
+
+  # Verify this is a git repository before attempting git operations
+  unless Dir.exist?(File.join(tap_dir, '.git'))
+    warn "Warning: #{tap_name} is not a git repository, skipping checkout"
     next
   end
 
