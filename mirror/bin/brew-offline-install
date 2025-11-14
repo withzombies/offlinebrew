@@ -135,9 +135,9 @@ ENV["HOMEBREW_NO_AUTO_UPDATE"] = "1"
 # need to tell Homebrew not to treat GitHub git repositories specially.
 ENV["HOMEBREW_NO_GITHUB_API"] = "1"
 
-# HOMEBREW_BUILD_FROM_SOURCE tells Homebrew to completely ignore bottles.
-# We do this because the mirror currently only contains source packages.
-ENV["HOMEBREW_BUILD_FROM_SOURCE"] = "1"
+# NOTE: We do NOT set HOMEBREW_BUILD_FROM_SOURCE because our mirror now
+# includes bottles for fast installations. Bottles are preferred when available,
+# with automatic fallback to source builds for formulas without bottles.
 
 # Force Homebrew to use local tap definitions instead of the JSON API.
 # This is essential for offline cask installation in Homebrew 4.0+/5.0+.
@@ -346,9 +346,8 @@ else
     abort "One or more invalid flags passed: #{invalid_flags.join(", ")}"
   end
 
-  # This shouldn't be necessary thanks to HOMEBREW_BUILD_FROM_SOURCE, but putting
-  # in the ARGV may help us trace where things go wrong.
-  ARGV << "--build-from-source"
+  # NOTE: We do NOT add --build-from-source because bottles are now available
+  # in the mirror and provide much faster installations (<10 seconds vs hours)
 end
 
 # Nuke Homebrew's cache. We don't want to assume that our mirroring server
@@ -412,6 +411,13 @@ taps.each do |tap_name, tap_info|
 end
 
 puts ""
+
+# Set HOMEBREW_API_DOMAIN to point to the mirror's API
+# This enables Homebrew to use the local API for formula/cask definitions,
+# which in turn allows it to discover and use bottles from the cache
+api_url = URI.join(baseurl, "api/").to_s
+ENV['HOMEBREW_API_DOMAIN'] = api_url
+puts "Using API from mirror: #{api_url}"
 
 # Run the appropriate install command
 if is_cask_install
