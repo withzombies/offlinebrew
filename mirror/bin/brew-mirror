@@ -273,14 +273,6 @@ if config[:taps].empty?
   abort
 end
 
-# Legacy fields for backward compatibility
-# Use first tap's commit (usually homebrew-core) for old format
-first_tap = config[:taps].values.first
-config[:commit] = first_tap["commit"] if first_tap
-config[:stamp] = Time.now.to_i.to_s
-config[:cache] = options[:directory]
-config[:baseurl] = options[:baseurl]
-
 File.write File.join(options[:directory], "config.json"), config.to_json
 
 # Initialize urlmap (will be empty in config-only mode)
