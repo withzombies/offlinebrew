@@ -139,23 +139,10 @@ ENV["HOMEBREW_NO_GITHUB_API"] = "1"
 # includes bottles for fast installations. Bottles are preferred when available,
 # with automatic fallback to source builds for formulas without bottles.
 
-# Force Homebrew to use local tap definitions instead of the JSON API.
-# This is essential for offline cask installation in Homebrew 4.0+/5.0+.
-#
-# Background: Starting with Homebrew 4.0, casks are installed using JSON API
-# files downloaded from formulae.brew.sh instead of using local tap checkouts.
-# This causes offline installation to fail because:
-#   1. Homebrew fetches latest cask definition from API (requires internet)
-#   2. API returns latest SHA256 (different from our mirrored version)
-#   3. Cached file with old SHA256 is not found
-#   4. Installation attempts internet download and fails
-#
-# HOMEBREW_BUILD_FROM_SOURCE only affects formulas, NOT casks. This variable
-# disables the API for both formulas and casks, forcing Homebrew to read
-# definitions from local .rb files in the mirrored tap.
-#
-# See: https://docs.brew.sh/FAQ#can-i-install-my-own-stuff-to-usrlocal
-ENV["HOMEBREW_NO_INSTALL_FROM_API"] = "1"
+# NOTE: We do NOT set HOMEBREW_NO_INSTALL_FROM_API because we now use
+# HOMEBREW_API_DOMAIN to point to our local API mirror. This unified approach
+# works for both formulas (with bottles) and casks, enabling offline installation
+# while preserving the API-based workflow that Homebrew 5.0+ expects.
 
 # Cache Pre-Population for macOS
 #
