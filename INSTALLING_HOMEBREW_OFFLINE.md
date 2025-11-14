@@ -237,25 +237,37 @@ brew --version
 
 ## Using with Offlinebrew
 
-After Homebrew is installed, you can use offlinebrew:
+After Homebrew is installed, you can use offlinebrew to install packages from your offline mirror.
+
+### Transfer Offlinebrew to Offline Machine
 
 ```bash
-# 1. Install offlinebrew (transfer from online machine)
-cd /path/to/offlinebrew
-export PATH="$(pwd)/bin:$PATH"
+# Copy offlinebrew directory from online machine to USB
+cp -r /path/to/offlinebrew /Volumes/USB/
 
-# 2. Configure mirror location
+# On offline machine
+cp -r /Volumes/USB/offlinebrew ~/
+cd ~/offlinebrew
+export PATH="$(pwd)/bin:$PATH"
+```
+
+### Configure and Install
+
+```bash
+# 1. Configure mirror location
 mkdir -p ~/.offlinebrew
 echo '{"baseurl": "http://mirror-server:8000"}' > ~/.offlinebrew/config.json
 
-# 3. Install packages
+# 2. Install packages from mirror
 brew offline install wget
 brew offline install --cask firefox
 ```
 
-See [GETTING_STARTED.md](GETTING_STARTED.md) for complete offlinebrew usage.
+See [GETTING_STARTED.md](GETTING_STARTED.md) for complete offlinebrew usage including creating mirrors.
 
 ## Alternative: Portable Homebrew Installation
+
+⚠️ **NOT RECOMMENDED** - Use only if you absolutely cannot use `/opt/homebrew`
 
 For environments where you can't install to `/opt/homebrew`:
 
@@ -270,7 +282,13 @@ echo 'export PATH="$HOME/homebrew/bin:$PATH"' >> ~/.zprofile
 source ~/.zprofile
 ```
 
-**Note**: Some packages may not work correctly outside `/opt/homebrew`.
+**Important Limitations**:
+- Most binary bottles (precompiled packages) will NOT work outside `/opt/homebrew`
+- You'll need to build many packages from source (very slow)
+- Some packages like `pkg-config`, `openssl`, `gettext`, and `python` are non-relocatable
+- Official Homebrew documentation warns: "Pick another prefix at your peril!"
+
+**Recommendation**: If possible, use the standard `/opt/homebrew` location for maximum compatibility.
 
 ## Next Steps
 
