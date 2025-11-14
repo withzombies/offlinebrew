@@ -110,11 +110,10 @@ module DownloadHelpers
 
   # Estimate download progress (if possible)
   #
-  # @param downloader [Object] Download strategy instance
+  # @param downloader [Object] Download strategy instance (Homebrew 5.0+)
   # @return [Hash, nil] Hash with :current and :total bytes, or nil
   def self.download_progress(downloader)
-    return nil unless downloader.respond_to?(:cached_location)
-
+    # Direct cached_location access (Homebrew 5.0+)
     cached = downloader.cached_location
     return nil unless cached && cached.exist?
 
@@ -128,7 +127,7 @@ module DownloadHelpers
 
   # Check if download is already cached
   #
-  # @param downloader [Object] Download strategy instance
+  # @param downloader [Object] Download strategy instance (Homebrew 5.0+)
   # @return [Boolean] True if file is already in cache
   #
   # @example Check if cached
@@ -136,8 +135,7 @@ module DownloadHelpers
   #     puts "Already downloaded"
   #   end
   def self.cached?(downloader)
-    return false unless downloader.respond_to?(:cached_location)
-
+    # Direct cached_location access (Homebrew 5.0+)
     location = downloader.cached_location
     location && location.exist? && location.size.positive?
   rescue StandardError
@@ -146,11 +144,10 @@ module DownloadHelpers
 
   # Get cached file size
   #
-  # @param downloader [Object] Download strategy instance
+  # @param downloader [Object] Download strategy instance (Homebrew 5.0+)
   # @return [Integer, nil] File size in bytes, or nil if not cached
   def self.cached_size(downloader)
-    return nil unless downloader.respond_to?(:cached_location)
-
+    # Direct cached_location access (Homebrew 5.0+)
     location = downloader.cached_location
     return nil unless location && location.exist?
 

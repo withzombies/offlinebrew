@@ -1,0 +1,19 @@
+# Test package definitions for offlinebrew integration tests
+# Format: type,name,version_command
+# Types: formula (CLI tools), cask (GUI applications)
+#
+# Package Selection Rationale:
+# - wget: Simple CLI tool, minimal dependencies, fast install
+# - jq: Has dependencies (oniguruma), tests dependency resolution
+# - nginx: Complex with multiple dependencies, tests larger packages
+# - firefox: Large cask (~200MB), tests cask mirroring
+# - rectangle: Small cask, lightweight window manager
+
+# Formulae (CLI tools)
+formula,wget,wget --version
+formula,jq,jq --version
+formula,nginx,nginx -v
+
+# Casks (GUI applications)
+cask,firefox,/Applications/Firefox.app/Contents/MacOS/firefox --version
+cask,rectangle,defaults read /Applications/Rectangle.app/Contents/Info CFBundleShortVersionString

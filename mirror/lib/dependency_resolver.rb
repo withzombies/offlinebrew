@@ -126,13 +126,13 @@ module DependencyResolver
 
       cask_tokens.each do |token|
         begin
-          cask = Cask::Cask.load(token)
+          cask = Cask::CaskLoader.load(token)
           resolved_casks.add(token)
 
           # Some casks depend on formulas
           if cask.depends_on
-            # Formula dependencies
-            if cask.depends_on.respond_to?(:formula) && cask.depends_on.formula
+            # Formula dependencies (Homebrew 5.0+)
+            if cask.depends_on.formula
               Array(cask.depends_on.formula).each do |formula_dep|
                 # Recursively resolve formula dependencies
                 formula_deps = resolve_formulas([formula_dep.to_s], include_build: include_build)
@@ -140,8 +140,8 @@ module DependencyResolver
               end
             end
 
-            # Cask dependencies (rare, but possible)
-            if cask.depends_on.respond_to?(:cask) && cask.depends_on.cask
+            # Cask dependencies (rare, but possible) (Homebrew 5.0+)
+            if cask.depends_on.cask
               Array(cask.depends_on.cask).each do |cask_dep|
                 resolved_casks.add(cask_dep.to_s)
               end
@@ -200,11 +200,6 @@ module DependencyResolver
       # Optional dependencies (optional)
       if include_optional
         deps += formula.optional_dependencies.map(&:name)
-      end
-
-      # Recommended dependencies (always include if present)
-      if formula.respond_to?(:recommended_dependencies)
-        deps += formula.recommended_dependencies.map(&:name)
       end
 
       deps.uniq

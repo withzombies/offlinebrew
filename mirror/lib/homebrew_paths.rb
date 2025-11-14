@@ -155,7 +155,7 @@ module HomebrewPaths
 
     begin
       output = SafeShell.execute('brew', '--version', timeout: 5)
-      # Output format: "Homebrew 4.0.0\n..."
+      # Output format: "Homebrew 5.0.0\n..."
       if output =~ /Homebrew\s+([\d.]+)/
         $1
       end

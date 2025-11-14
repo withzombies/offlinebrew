@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# brew-offline-install: Install formulae or casks from an offline mirror
+# brew-offline-install: Install formulae or casks from an offline mirror (macOS only)
 #
 # Usage:
 #   brew-offline-install <formula>           # Install a formula
@@ -14,8 +14,13 @@
 #     {"baseurl": "http://mirror-server:8000"}
 #
 # The mirror must be created with brew-mirror and served via HTTP.
-# This script will reset taps to mirrored commits and use local shims
-# to redirect all downloads to the local mirror.
+#
+# How it works on macOS:
+#   This script uses cache pre-population to enable offline installation.
+#   Before running 'brew install', all required files are downloaded from
+#   the mirror and placed in Homebrew's cache directory with proper naming
+#   (sha256--filename). When Homebrew runs, it finds these files in its
+#   cache and uses them instead of downloading from the internet.
 
 require "json"
 require "net/http"
@@ -44,21 +49,19 @@ def validate_configuration(config, is_cask_install)
       ERROR
     end
 
-    # Check if cask tap is installed locally
-    unless HomebrewPaths.cask_tap_exists?
+    # Check if cask API is available (works with both bundled and directory-based taps)
+    require_relative "../lib/cask_helpers"
+    unless CaskHelpers.cask_api_available?
       abort <<~ERROR
-        ERROR: homebrew-cask tap not installed locally.
+        ERROR: Cask API not available in Homebrew.
 
-        Please install it first:
-          brew tap homebrew/cask
-
-        Then try your installation again.
+        Please ensure you have a working Homebrew installation with cask support.
       ERROR
     end
   end
 
   # Verify all mirrored taps are installed locally
-  taps.each do |tap_name, _tap_info|
+  taps.each do |tap_name, tap_info|
     tap_dir = case tap_name
               when "homebrew/homebrew-core"
                 HomebrewPaths.core_tap_path
@@ -68,6 +71,11 @@ def validate_configuration(config, is_cask_install)
                 user, repo = tap_name.split("/")
                 HomebrewPaths.tap_path(user, repo)
               end
+
+    # Skip directory check for bundled taps (Homebrew 5.0+)
+    # Bundled taps don't exist as separate directories, which is expected
+    tap_commit = tap_info["commit"] || tap_info[:commit]
+    next if tap_commit&.start_with?("bundled-")
 
     unless Dir.exist?(tap_dir)
       warn "Warning: Tap #{tap_name} from mirror not found at #{tap_dir}"
@@ -84,24 +92,21 @@ unless HomebrewPaths.homebrew_installed?
   abort "Fatal: Homebrew is not installed or not in PATH"
 end
 
-# Verify homebrew-core tap exists
-unless Dir.exist?(CORE_TAP_DIR)
-  abort "Fatal: homebrew-core tap not found at #{CORE_TAP_DIR}"
-end
-
 # On exit, return all taps to their master branches.
 # It shouldn't actually hurt us to stay at whatever prior revision
 # we rewind to, but this should keep the number of warnings raised
 # by Homebrew down.
 at_exit do
-  # Restore core tap
-  Dir.chdir CORE_TAP_DIR do
-    SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
+  # Restore core tap (only if it's a git repository, not bundled)
+  if Dir.exist?(CORE_TAP_DIR) && Dir.exist?(File.join(CORE_TAP_DIR, '.git'))
+    Dir.chdir CORE_TAP_DIR do
+      SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
+    end
   end
 
-  # Restore cask tap if it exists
+  # Restore cask tap if it exists and is a git repository
   cask_tap_dir = HomebrewPaths.cask_tap_path
-  if Dir.exist?(cask_tap_dir)
+  if Dir.exist?(cask_tap_dir) && Dir.exist?(File.join(cask_tap_dir, '.git'))
     Dir.chdir cask_tap_dir do
       SafeShell.execute('git', 'checkout', 'master', timeout: 10, allowed_failures: true)
     end
@@ -130,20 +135,71 @@ ENV["HOMEBREW_NO_AUTO_UPDATE"] = "1"
 # need to tell Homebrew not to treat GitHub git repositories specially.
 ENV["HOMEBREW_NO_GITHUB_API"] = "1"
 
-# HOMEBREW_BUILD_FROM_SOURCE tells Homebrew to completely ignore bottles.
-# We do this because the mirror currently only contains source packages.
-ENV["HOMEBREW_BUILD_FROM_SOURCE"] = "1"
+# NOTE: We do NOT set HOMEBREW_BUILD_FROM_SOURCE because our mirror now
+# includes bottles for fast installations. Bottles are preferred when available,
+# with automatic fallback to source builds for formulas without bottles.
 
-# HOMEBREW_DEVELOPER tells Homebrew to run in developer mode.
-# We do this so that Homebrew will respect HOMEBREW_CURL_PATH
-# and HOMEBREW_GIT_PATH below.
-ENV["HOMEBREW_DEVELOPER"] = "1"
+# NOTE: We do NOT set HOMEBREW_NO_INSTALL_FROM_API because we now use
+# HOMEBREW_API_DOMAIN to point to our local API mirror. This unified approach
+# works for both formulas (with bottles) and casks, enabling offline installation
+# while preserving the API-based workflow that Homebrew 5.0+ expects.
 
-# HOMEBREW_CURL_PATH and HOMEBREW_GIT_PATH tell Homebrew where to look for
-# `curl` and `git` executables when running in developer mode.
-# In this case, they point to our URL-rewriting shim scripts.
-ENV["HOMEBREW_CURL_PATH"] = "brew-offline-curl"
-ENV["HOMEBREW_GIT_PATH"] = "brew-offline-git"
+# Cache Pre-Population for macOS
+#
+# macOS Homebrew doesn't support HOMEBREW_CURL_PATH for intercepting downloads.
+# Instead, we pre-populate Homebrew's cache directory with files from the mirror
+# before running 'brew install'. This is the most reliable offline approach.
+#
+# How it works:
+#   1. Fetch all files from the mirror's urlmap
+#   2. Calculate SHA256 hash of each file
+#   3. Write to cache as: downloads/sha256--filename
+#   4. When Homebrew runs, it finds files in cache and skips downloading
+
+require 'net/http'
+require 'fileutils'
+require 'digest'
+
+def prepopulate_cache_from_mirror(formulae, urlmap, baseurl, cache_dir)
+  downloads_dir = File.join(cache_dir, "downloads")
+  FileUtils.mkdir_p(downloads_dir)
+
+  populated = 0
+  failed = []
+
+  urlmap.each do |url, mirror_file|
+    mirror_url = URI.join(baseurl, mirror_file)
+
+    begin
+      response = Net::HTTP.get_response(URI(mirror_url))
+
+      if response.is_a?(Net::HTTPSuccess)
+        # Homebrew cache files use format: sha256--filename
+        content = response.body
+        sha256 = Digest::SHA256.hexdigest(content)
+        # URL-decode the filename to match Homebrew's expectations
+        filename = URI.decode_www_form_component(File.basename(URI(url).path))
+        cache_filename = "#{sha256}--#{filename}"
+        cache_path = File.join(downloads_dir, cache_filename)
+
+        File.binwrite(cache_path, content)
+        populated += 1
+      else
+        failed << mirror_file
+      end
+    rescue => e
+      failed << mirror_file
+    end
+  end
+
+  puts "Pre-populated #{populated} files from mirror into Homebrew cache" if populated > 0
+
+  if failed.any?
+    warn "Warning: Failed to fetch #{failed.length} files from mirror"
+    warn "Mirror server may be unreachable. Check: #{baseurl}"
+    warn "Installation may fall back to internet downloads for missing files"
+  end
+end
 
 # Detect if user is trying to install a cask
 is_cask_install = ARGV.include?("--cask") || ARGV.include?("cask")
@@ -153,11 +209,6 @@ is_cask_install = true if ARGV.first == "cask"
 # NOTE: These are runtime variables, not constants, so they're evaluated
 # when the script runs (allowing REAL_HOME environment variable to work)
 
-# DEBUG: Print environment info
-warn "DEBUG brew-offline-install: ENV['REAL_HOME'] = #{ENV['REAL_HOME'].inspect}"
-warn "DEBUG brew-offline-install: ENV['HOME'] = #{ENV['HOME'].inspect}"
-warn "DEBUG brew-offline-install: OfflinebrewConfig.real_home_directory = #{OfflinebrewConfig.real_home_directory.inspect}"
-
 brew_offline_dir = OfflinebrewConfig.config_dir
 
 # TODO(ww): We should be fetching most of the configuration options from
@@ -165,9 +216,6 @@ brew_offline_dir = OfflinebrewConfig.config_dir
 # want (and need) locally is the mirror's address.
 brew_offline_local_config = OfflinebrewConfig.config_path
 brew_offline_local_urlmap = OfflinebrewConfig.urlmap_path
-
-warn "DEBUG brew-offline-install: brew_offline_local_config = #{brew_offline_local_config.inspect}"
-warn "DEBUG brew-offline-install: Attempting to read config file..."
 
 config = JSON.parse File.read(brew_offline_local_config), symbolize_names: true
 baseurl = config[:baseurl]
@@ -192,21 +240,66 @@ rescue StandardError => e
   abort "#{e}: #{e.message} while fetching remote configuration and urlmap!"
 end
 
-# Handle new tap-based config format with backward compatibility
-taps = if config[:taps]
-         # New format
-         config[:taps]
-       elsif config[:commit]
-         # Old format - convert to new format
-         {
-           "homebrew/homebrew-core" => {
-             "commit" => config[:commit],
-             "type" => "formula",
-           },
-         }
-       else
-         abort "Invalid config format: no taps or commit found"
-       end
+# Require new tap-based config format (Homebrew 5.0+ only)
+if config[:commit]
+  abort <<~ERROR
+    ❌ Legacy config format detected!
+
+    Your config uses the old single-tap format:
+    {
+      "commit": "#{config[:commit][0..10]}...",
+      "formulae": [...]
+    }
+
+    This format is no longer supported. Please use the new multi-tap format:
+    {
+      "taps": {
+        "homebrew/homebrew-core": {
+          "commit": "bundled-5.0",
+          "type": "formula"
+        }
+      },
+      "formulae": [...],
+      "casks": [...]
+    }
+
+    For bundled taps in Homebrew 5.0+, use "bundled-5.0" as the commit.
+  ERROR
+end
+
+unless config[:taps]
+  abort <<~ERROR
+    ❌ Invalid config format: 'taps' section is required
+
+    Config must include a 'taps' section:
+    {
+      "taps": {
+        "homebrew/homebrew-core": {
+          "commit": "bundled-5.0",
+          "type": "formula"
+        }
+      },
+      "formulae": ["wget", "curl"]
+    }
+  ERROR
+end
+
+taps = config[:taps]
+
+# Validate each tap configuration
+taps.each do |tap_name, tap_config|
+  unless tap_config.is_a?(Hash)
+    abort "❌ Invalid tap config for #{tap_name}: must be a hash with 'commit' and 'type'"
+  end
+
+  unless tap_config["commit"] || tap_config[:commit]
+    abort "❌ Invalid tap config for #{tap_name}: missing 'commit' field"
+  end
+
+  unless tap_config["type"] || tap_config[:type]
+    abort "❌ Invalid tap config for #{tap_name}: missing 'type' field (formula/cask/mixed)"
+  end
+end
 
 # Validate configuration
 validate_configuration(config.merge(taps: taps), is_cask_install)
@@ -240,14 +333,18 @@ else
     abort "One or more invalid flags passed: #{invalid_flags.join(", ")}"
   end
 
-  # This shouldn't be necessary thanks to HOMEBREW_BUILD_FROM_SOURCE, but putting
-  # in the ARGV may help us trace where things go wrong.
-  ARGV << "--build-from-source"
+  # NOTE: We do NOT add --build-from-source because bottles are now available
+  # in the mirror and provide much faster installations (<10 seconds vs hours)
 end
 
 # Nuke Homebrew's cache. We don't want to assume that our mirroring server
 # supports resumeable downloads or `git fetch`.
 system "brew", "cleanup", "-s", "--prune=0"
+
+# Pre-populate Homebrew cache from mirror (most reliable method for macOS)
+# MUST be done AFTER cleanup to avoid cache deletion
+homebrew_cache = `brew --cache`.chomp
+prepopulate_cache_from_mirror(ARGV, urlmap, baseurl, homebrew_cache)
 
 # Reset all mirrored taps to their respective commits
 # This ensures we install the exact versions we mirrored
@@ -268,8 +365,20 @@ taps.each do |tap_name, tap_info|
               HomebrewPaths.tap_path(user, repo)
             end
 
+  # Skip git operations for bundled taps (Homebrew 5.0+)
+  if tap_commit.start_with?("bundled-")
+    puts "  #{tap_name} is bundled at #{tap_commit} (no checkout needed)"
+    next
+  end
+
   unless Dir.exist?(tap_dir)
     warn "Warning: Tap not found: #{tap_name} at #{tap_dir}, skipping"
+    next
+  end
+
+  # Verify this is a git repository before attempting git operations
+  unless Dir.exist?(File.join(tap_dir, '.git'))
+    warn "Warning: #{tap_name} is not a git repository, skipping checkout"
     next
   end
 
@@ -289,6 +398,13 @@ taps.each do |tap_name, tap_info|
 end
 
 puts ""
+
+# Set HOMEBREW_API_DOMAIN to point to the mirror's API
+# This enables Homebrew to use the local API for formula/cask definitions,
+# which in turn allows it to discover and use bottles from the cache
+api_url = URI.join(baseurl, "api/").to_s
+ENV['HOMEBREW_API_DOMAIN'] = api_url
+puts "Using API from mirror: #{api_url}"
 
 # Run the appropriate install command
 if is_cask_install

@@ -18,12 +18,7 @@ require_relative 'homebrew_paths'
 #     end
 #   end
 module CaskHelpers
-  # Safely get all casks, handling API differences
-  #
-  # Tries multiple methods to load all available casks:
-  # 1. Modern API: Cask::Cask.all
-  # 2. Alternative: Cask.to_a
-  # 3. Fallback: Read cask files from tap directory
+  # Get all casks using modern Cask API (Homebrew 5.0+)
   #
   # @return [Array<Cask>] Array of cask objects
   #
@@ -31,45 +26,22 @@ module CaskHelpers
   #   casks = CaskHelpers.all_casks
   #   puts "Found #{casks.count} casks"
   def self.all_casks
-    begin
-      # Try modern API first
-      if defined?(Cask::Cask) && Cask::Cask.respond_to?(:all)
-        # Cask::Cask.all requires HOMEBREW_EVAL_ALL to be set
-        ENV['HOMEBREW_EVAL_ALL'] = '1'
-        return Cask::Cask.all
-      end
-
-      # Try alternative methods
-      if defined?(Cask) && Cask.respond_to?(:to_a)
-        return Cask.to_a
-      end
-
-      # Last resort: iterate tap directory
-      cask_dir = File.join(HomebrewPaths.cask_tap_path, "Casks")
-      return [] unless Dir.exist?(cask_dir)
-
-      warn "Using fallback: loading casks from #{cask_dir}"
-
-      Dir.glob("#{cask_dir}/*.rb").map do |path|
-        token = File.basename(path, ".rb")
-        Cask::CaskLoader.load(token)
-      end
-    rescue StandardError => e
-      warn "Error loading casks: #{e.message}"
-      []
-    end
+    # Use modern Cask API (Homebrew 5.0+)
+    ENV['HOMEBREW_EVAL_ALL'] = '1'
+    Cask::Cask.all
   end
 
   # Check if cask API is available
   #
-  # @return [Boolean] True if Cask classes are defined
+  # @return [Boolean] Always true in Homebrew 5.0+
   #
   # @example Check cask API
   #   if CaskHelpers.cask_api_available?
   #     puts "Cask support enabled"
   #   end
   def self.cask_api_available?
-    defined?(Cask::Cask) && defined?(Cask::CaskLoader)
+    # Always true in Homebrew 5.0+
+    true
   end
 
   # Safely load a specific cask by token
@@ -104,19 +76,19 @@ module CaskHelpers
 
   # Check if a cask has a downloadable URL
   #
-  # @param cask [Cask] Cask object
+  # @param cask [Cask] Cask object (Homebrew 5.0+)
   # @return [Boolean] True if cask has a URL
   def self.has_url?(cask)
-    cask.respond_to?(:url) && !cask.url.nil?
+    # Direct attribute access (Homebrew 5.0+)
+    !cask.url.nil?
   end
 
   # Get cask SHA256 checksum (if available)
   #
-  # @param cask [Cask] Cask object
+  # @param cask [Cask] Cask object (Homebrew 5.0+)
   # @return [String, Symbol, nil] Checksum or :no_check or nil
   def self.checksum(cask)
-    return nil unless cask.respond_to?(:sha256)
-
+    # Direct sha256 access (Homebrew 5.0+)
     cask.sha256
   end
 end

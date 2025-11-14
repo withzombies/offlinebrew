@@ -189,43 +189,24 @@ Mirror Statistics:
 Mirror is valid!
 ```
 
-### Internal Shims
+### How Installation Works (macOS)
 
-These commands are called automatically by `brew offline install`. You don't need to use them directly.
+Installation from the mirror uses **cache pre-population**:
 
-#### brew-offline-curl (Internal)
-
-Intercepts `curl` requests and redirects to the local mirror.
-
-**How It Works:**
-1. Receives curl request from Homebrew
-2. Looks up URL in mirror's `urlmap.json`
-3. Returns local mirror file if found
-4. Falls back to normal curl if not in mirror
+1. `brew offline install` reads the mirror's `urlmap.json`
+2. All required files are downloaded from the mirror to Homebrew's cache
+3. Files are named using the format: `sha256hash--filename`
+4. When `brew install` runs, it finds files already in cache
+5. Installation proceeds normally without internet access
 
 **Debug Mode:**
 ```bash
 export BREW_OFFLINE_DEBUG=1
 brew offline install wget
-# Shows: [brew-offline-curl] Looking up URL: https://...
+# Shows cache pre-population progress
 ```
 
-#### brew-offline-git (Internal)
-
-Intercepts `git clone` requests and redirects to the local mirror.
-
-**How It Works:**
-1. Receives git clone request from Homebrew
-2. Looks up repository in mirror's `urlmap.json`
-3. Returns local mirror repository if found
-4. Falls back to normal git if not in mirror
-
-**Debug Mode:**
-```bash
-export BREW_OFFLINE_DEBUG=1
-brew offline install formula-with-git-dependency
-# Shows: [brew-offline-git] Redirecting: https://github.com/...
-```
+This approach is used because macOS Homebrew doesn't support environment variables for URL interception.
 
 ## Advanced Features
 
@@ -751,9 +732,9 @@ brew offline install wget
 
 Output example:
 ```
-[brew-offline-curl] Looking up URL: https://ftp.gnu.org/gnu/wget/wget-1.21.3.tar.gz
-[brew-offline-curl] ✓ Found mapping: wget-1.21.3.tar.gz -> f2c1e86ca.tar.gz
-[brew-offline-curl] Serving from mirror: http://localhost:8000/f2c1e86ca.tar.gz
+Pre-populated 5 files from mirror into Homebrew cache
+==> Downloading https://ftp.gnu.org/gnu/wget/wget-1.21.3.tar.gz
+Already downloaded: /Users/you/Library/Caches/Homebrew/downloads/abc123...--wget-1.21.3.tar.gz
 ```
 
 ### Statistics and Reporting
@@ -862,8 +843,6 @@ When things aren't working:
    brew update
    ```
 
-For more solutions, see [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
-
 ## Testing
 
 Run the comprehensive integration test suite:
@@ -882,37 +861,32 @@ See [test/integration/README.md](test/integration/README.md) for details.
 
 ## Architecture
 
-### How URL Rewriting Works
+### How Cache Pre-Population Works (macOS)
 
-1. **brew offline install** sets up environment:
-   - Adds shims to PATH before Homebrew directories
-   - Sets `REAL_HOME` for config access in sandbox
-   - Resets taps to mirror commits
+1. **brew offline install** prepares the environment:
+   - Fetches mirror configuration and URL mapping
+   - Sets `REAL_HOME` for config access during sandbox builds
+   - Resets taps to mirror commits for version consistency
 
-2. **Homebrew** runs normally but calls shims:
-   - `curl` calls → `brew-offline-curl`
-   - `git clone` calls → `brew-offline-git`
+2. **Pre-populate Homebrew cache:**
+   - Downloads all files from mirror's `urlmap.json`
+   - Calculates SHA256 hash of each file
+   - Writes to cache as: `~/Library/Caches/Homebrew/downloads/sha256--filename`
+   - Reports how many files were cached
 
-3. **Shims** redirect to mirror:
-   - Look up URL in `urlmap.json`
-   - Return local mirror file
-   - Fall back to normal curl/git if not in mirror
+3. **Run brew install:**
+   - Homebrew checks its cache before downloading
+   - Finds all required files already present
+   - Uses cached files instead of downloading
+   - Installation proceeds normally
 
-4. **Installation** proceeds normally:
-   - Homebrew thinks it downloaded from internet
-   - Actually got files from local mirror
-   - Same installation process, different source
+4. **Result:**
+   - Seamless offline installation
+   - No internet access required
+   - Same installation process as online, just uses cache
+   - Compatible with all Homebrew features
 
-**Result:** Seamless offline installation!
-
-## Migration from v1.x
-
-See [MIGRATION.md](../MIGRATION.md) for upgrading from older versions.
-
-**Summary:** v2.0 is backward compatible!
-- Old mirrors work with new tools
-- Old configs are auto-upgraded
-- Use `--update` to add v2.0 features to old mirrors
+**Why this approach?** macOS Homebrew doesn't support `HOMEBREW_CURL_PATH` or `HOMEBREW_GIT_PATH` environment variables, so we can't intercept downloads. Pre-populating the cache is more reliable and works consistently across Homebrew versions.
 
 ## Performance Tips
 
@@ -971,8 +945,6 @@ Update client config:
 
 - **Documentation:** [GETTING_STARTED.md](../GETTING_STARTED.md)
 - **Issues:** [GitHub Issues](https://github.com/withzombies/offlinebrew/issues)
-- **Changelog:** [CHANGELOG.md](../CHANGELOG.md)
-- **Migration:** [MIGRATION.md](../MIGRATION.md)
 
 ## License
 
