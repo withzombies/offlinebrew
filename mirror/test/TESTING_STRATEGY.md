@@ -1,5 +1,7 @@
 # TDD Testing Strategy for Offlinebrew Executables
 
+> **⚠️ PARTIALLY DEPRECATED:** This document describes testing strategies for the old shim-based approach (`brew-offline-curl`, `brew-offline-git`). These shims have been removed in favor of cache pre-population on macOS. The sections about `brew-mirror` and `brew-offline-install` remain relevant. Preserved for historical reference.
+
 ## Current State: Legacy Code Situation
 
 **Reality Check:** The executables (`brew-mirror`, `brew-offline-install`, `brew-offline-curl`) were written before tests. This violates TDD principles.

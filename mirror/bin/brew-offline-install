@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# brew-offline-install: Install formulae or casks from an offline mirror
+# brew-offline-install: Install formulae or casks from an offline mirror (macOS only)
 #
 # Usage:
 #   brew-offline-install <formula>           # Install a formula
@@ -14,8 +14,13 @@
 #     {"baseurl": "http://mirror-server:8000"}
 #
 # The mirror must be created with brew-mirror and served via HTTP.
-# This script will reset taps to mirrored commits and use local shims
-# to redirect all downloads to the local mirror.
+#
+# How it works on macOS:
+#   This script uses cache pre-population to enable offline installation.
+#   Before running 'brew install', all required files are downloaded from
+#   the mirror and placed in Homebrew's cache directory with proper naming
+#   (sha256--filename). When Homebrew runs, it finds these files in its
+#   cache and uses them instead of downloading from the internet.
 
 require "json"
 require "net/http"
@@ -136,9 +141,17 @@ ENV["HOMEBREW_NO_GITHUB_API"] = "1"
 # We do this because the mirror currently only contains source packages.
 ENV["HOMEBREW_BUILD_FROM_SOURCE"] = "1"
 
-# On macOS, Homebrew doesn't support HOMEBREW_CURL for intercepting downloads.
-# Instead, we pre-populate Homebrew's cache directory with files from the mirror.
-# This is the most reliable approach for offline installation.
+# Cache Pre-Population for macOS
+#
+# macOS Homebrew doesn't support HOMEBREW_CURL_PATH for intercepting downloads.
+# Instead, we pre-populate Homebrew's cache directory with files from the mirror
+# before running 'brew install'. This is the most reliable offline approach.
+#
+# How it works:
+#   1. Fetch all files from the mirror's urlmap
+#   2. Calculate SHA256 hash of each file
+#   3. Write to cache as: downloads/sha256--filename
+#   4. When Homebrew runs, it finds files in cache and skips downloading
 
 require 'net/http'
 require 'fileutils'
@@ -149,6 +162,8 @@ def prepopulate_cache_from_mirror(formulae, urlmap, baseurl, cache_dir)
   FileUtils.mkdir_p(downloads_dir)
 
   populated = 0
+  failed = []
+
   urlmap.each do |url, mirror_file|
     mirror_url = URI.join(baseurl, mirror_file)
 
@@ -165,13 +180,21 @@ def prepopulate_cache_from_mirror(formulae, urlmap, baseurl, cache_dir)
 
         File.binwrite(cache_path, content)
         populated += 1
+      else
+        failed << mirror_file
       end
     rescue => e
-      # Silently skip files that fail to download
+      failed << mirror_file
     end
   end
 
   puts "Pre-populated #{populated} files from mirror into Homebrew cache" if populated > 0
+
+  if failed.any?
+    warn "Warning: Failed to fetch #{failed.length} files from mirror"
+    warn "Mirror server may be unreachable. Check: #{baseurl}"
+    warn "Installation may fall back to internet downloads for missing files"
+  end
 end
 
 # Detect if user is trying to install a cask

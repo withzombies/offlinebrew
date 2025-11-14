@@ -6,7 +6,7 @@ This guide covers how to install and set up Offlinebrew on your system.
 
 ### For Creating Mirrors
 
-- **Operating System**: macOS 10.15+ (Catalina or later) or Linux with Homebrew
+- **Operating System**: macOS 10.15+ (Catalina or later)
 - **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
 - **Disk Space**:
   - Selective mirrors: 1-10GB
@@ -20,7 +20,7 @@ This guide covers how to install and set up Offlinebrew on your system.
 
 ### For Installing from Mirrors
 
-- **Operating System**: macOS 10.15+ or Linux with Homebrew
+- **Operating System**: macOS 10.15+ (Catalina or later)
 - **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
 - **Disk Space**: Varies by packages installed
 - **Software**:
@@ -393,23 +393,34 @@ After installation:
 
 ## Platform-Specific Notes
 
-### macOS on Apple Silicon (M1/M2/M3)
+### macOS on Apple Silicon (M1/M2/M3/M4)
 
 - Homebrew installs to `/opt/homebrew` (not `/usr/local`)
 - Offlinebrew automatically detects this
 - No special configuration needed
+- Uses cache pre-population for offline installation
 
 ### macOS on Intel
 
 - Homebrew installs to `/usr/local`
 - Standard configuration works
+- Uses cache pre-population for offline installation
 
-### Linux
+### How Offline Installation Works on macOS
 
-- Formula support: Excellent
-- Cask support: Limited (most casks are macOS-only)
-- Homebrew location varies by distribution
-- Test thoroughly before production use
+Offlinebrew uses a **cache pre-population** approach for macOS:
+
+1. Before installation, all required files are downloaded from your mirror
+2. Files are placed in Homebrew's cache directory (`~/Library/Caches/Homebrew/downloads/`)
+3. Each file is named using the format: `sha256hash--filename.tar.gz`
+4. When `brew install` runs, it finds files in cache and uses them instead of downloading
+
+This approach is necessary because macOS Homebrew doesn't support the `HOMEBREW_CURL_PATH` or `HOMEBREW_GIT_PATH` environment variables that would allow URL interception.
+
+**What this means for you:**
+- Installation is fully automatic - no special configuration needed
+- You'll see a message: "Pre-populated X files from mirror into Homebrew cache"
+- If you don't see this message, check your mirror server is running and accessible
 
 ## Security Considerations
 

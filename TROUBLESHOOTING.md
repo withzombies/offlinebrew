@@ -102,26 +102,115 @@ echo '{"baseurl": "http://mirror-server:8000"}' > ~/.offlinebrew/config.json
 
 ### Downloads still go to internet
 
-**Problem:** Shims not in PATH or config incorrect.
+**Problem:** Cache pre-population failed or mirror server unreachable.
 
-**Solution 1:** Check shims are working:
+**Solution 1:** Check if cache was populated:
+```bash
+ls ~/Library/Caches/Homebrew/downloads/
+# Should see files like: abc123...def--wget-1.21.3.tar.gz
+```
+
+**Solution 2:** Enable debug mode to see cache pre-population:
 ```bash
 export BREW_OFFLINE_DEBUG=1
-ruby bin/brew-offline-install wget
-# Look for "[brew-offline-curl]" messages
+brew offline install wget
+# Look for "Pre-populated X files from mirror" message
 ```
 
-**Solution 2:** Verify PATH includes shims:
+**Solution 3:** Check mirror server is accessible:
 ```bash
-echo $PATH | grep offlinebrew
-# Should see offlinebrew/mirror/bin
+curl http://your-mirror-ip:8000/config.json
+curl http://your-mirror-ip:8000/urlmap.json
 ```
 
-**Solution 3:** Check config:
+**Solution 4:** Verify config:
 ```bash
 cat ~/.offlinebrew/config.json
-# Verify baseurl is correct
+# Verify baseurl is correct and accessible
 ```
+
+**Solution 5:** Check for warning messages:
+Look for output like:
+```
+Warning: Failed to fetch 5 files from mirror
+Mirror server may be unreachable. Check: http://...
+```
+
+This indicates the mirror server is down or unreachable from your machine.
+
+### Cache pre-population not working
+
+**Problem:** "Pre-populated X files" message not appearing during installation.
+
+**Symptom:** Installation downloads from internet instead of using mirror.
+
+**Diagnosis steps:**
+
+1. **Verify mirror server is running:**
+   ```bash
+   # From mirror server machine
+   python3 -m http.server 8000
+   # Leave this running
+   ```
+
+2. **Test mirror from offline machine:**
+   ```bash
+   curl http://192.168.1.100:8000/config.json
+   # Should return JSON config
+
+   curl http://192.168.1.100:8000/urlmap.json
+   # Should return URL mapping
+   ```
+
+3. **Check ~/.offlinebrew/config.json exists and is valid:**
+   ```bash
+   cat ~/.offlinebrew/config.json
+   # Should show: {"baseurl": "http://192.168.1.100:8000"}
+   ```
+
+4. **Verify package is in mirror:**
+   ```bash
+   # Check manifest on mirror server
+   open /path/to/mirror/manifest.html
+   # Or:
+   cat /path/to/mirror/manifest.json | jq '.formulae[].name' | grep wget
+   ```
+
+5. **Clear cache and try with debug mode:**
+   ```bash
+   rm -rf ~/Library/Caches/Homebrew/downloads/*
+   export BREW_OFFLINE_DEBUG=1
+   export HOMEBREW_VERBOSE=1
+   brew offline install wget 2>&1 | tee install.log
+   ```
+
+**Common causes:**
+
+- **Mirror server not running:** Start `python3 -m http.server 8000` in mirror directory
+- **Wrong IP address in config:** Update `~/.offlinebrew/config.json` with correct IP
+- **Firewall blocking connection:** Check firewall on mirror server machine
+- **Package not in mirror:** Add it with `brew offline mirror -d ~/mirror -f package --update`
+
+### Homebrew cache location issues
+
+**Problem:** Can't find where cached files should be.
+
+**Solution:** Check your Homebrew cache location:
+```bash
+brew --cache
+# On Apple Silicon: /Users/you/Library/Caches/Homebrew
+# On Intel Mac: /Users/you/Library/Caches/Homebrew
+
+# Check downloads subdirectory
+ls "$(brew --cache)/downloads/"
+```
+
+**Homebrew cache format:** Files are named `sha256hash--filename`, for example:
+```
+abc123def456...789--wget-1.21.3.tar.gz
+```
+
+The SHA256 hash must match the file's actual content for Homebrew to use it.
 
 ### Cask installation fails
 

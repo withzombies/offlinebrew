@@ -182,12 +182,6 @@ jobs:
           echo "Testing download retry and verification..."
           ruby mirror/test/test_download_helpers.rb
 
-      - name: Run brew-offline-curl tests
-        run: |
-          echo "Testing brew-offline-curl URL redirection..."
-          cd mirror/test
-          ruby -I../lib:. executable/test_brew_offline_curl.rb
-
       - name: Display unit test summary
         if: always()
         run: |
@@ -198,7 +192,6 @@ jobs:
           echo "✓ URL helpers tests"
           echo "✓ Container helpers tests"
           echo "✓ Download helpers tests"
-          echo "✓ brew-offline-curl tests"
           echo ""
 
   test-fast:

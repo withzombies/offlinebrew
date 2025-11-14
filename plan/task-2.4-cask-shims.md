@@ -1,5 +1,7 @@
 # Task 2.4: Update URL Shims for Casks
 
+> **⚠️ DEPRECATED:** This document describes the old shim-based approach that was used before macOS cache pre-population was implemented. The shim files (`brew-offline-curl`, `brew-offline-git`) have been removed in favor of cache pre-population. This document is preserved for historical reference only.
+
 ## Objective
 
 Ensure `brew-offline-curl` and `brew-offline-git` properly handle cask-specific download patterns and edge cases.

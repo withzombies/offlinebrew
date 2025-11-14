@@ -17,14 +17,14 @@ The process has three main steps:
 ## Prerequisites
 
 ### Online Machine (for creating mirror)
-- macOS 10.15+ or Linux with Homebrew installed
+- macOS 10.15+ (Catalina or later)
 - 100GB+ free disk space (for full mirror) or 1-10GB (for specific packages)
 - Internet connection
 - Ruby 2.6+ (included with macOS)
 - Python 3 (for serving mirror)
 
 ### Offline Machine (for installations)
-- macOS 10.15+ or Linux with Homebrew installed
+- macOS 10.15+ (Catalina or later)
 - Network access to mirror server
 - Ruby 2.6+ (included with macOS)
 
@@ -239,9 +239,12 @@ brew offline install jq htop wget
 
 1. The install command reads `~/.offlinebrew/config.json` to find the mirror
 2. It resets Homebrew taps to the versions captured in the mirror
-3. It uses URL shims to redirect all downloads to your mirror
-4. Homebrew installs the package normally, but from your mirror
-5. After installation, taps are restored to their original state
+3. **It pre-populates Homebrew's cache** with all required files from your mirror
+4. Files are named using the format: `sha256hash--filename`
+5. Homebrew installs the package normally, finding files already in cache
+6. After installation, taps are restored to their original state
+
+You'll see a message like: **"Pre-populated 5 files from mirror into Homebrew cache"**
 
 ## Updating Your Mirror
 
@@ -369,6 +372,59 @@ The package version in the mirror doesn't match what Homebrew expects:
 1. Update the mirror: `brew offline mirror -d ~/brew-mirror --update`
 2. Verify the mirror: `brew offline verify ~/brew-mirror`
 3. Try installation again
+
+### "Pre-populated X files" message not appearing
+
+If you don't see the cache pre-population message during installation:
+
+1. **Check mirror server is accessible:**
+   ```bash
+   curl http://192.168.1.100:8000/config.json
+   ```
+
+2. **Verify config file:**
+   ```bash
+   cat ~/.offlinebrew/config.json
+   # Should show: {"baseurl": "http://your-mirror:8000"}
+   ```
+
+3. **Check mirror has the package:**
+   ```bash
+   open ~/brew-mirror/manifest.html
+   # Or: cat ~/brew-mirror/manifest.json | jq '.formulae[].name'
+   ```
+
+4. **Enable debug mode to see what's happening:**
+   ```bash
+   export BREW_OFFLINE_DEBUG=1
+   brew offline install wget
+   ```
+
+### Installation still downloads from internet
+
+If installation bypasses the mirror and downloads from the internet:
+
+1. **Verify cache was populated:**
+   ```bash
+   ls ~/Library/Caches/Homebrew/downloads/
+   # Should see files like: abc123...def--wget-1.21.3.tar.gz
+   ```
+
+2. **Check for warning messages:**
+   Look for: "Warning: Failed to fetch X files from mirror"
+   This means mirror server is unreachable
+
+3. **Verify mirror server URL:**
+   ```bash
+   # Test from offline machine
+   curl http://your-mirror-ip:8000/urlmap.json
+   ```
+
+4. **Clear Homebrew cache and try again:**
+   ```bash
+   rm -rf ~/Library/Caches/Homebrew/downloads/*
+   brew offline install wget
+   ```
 
 ### For more help
 

@@ -13,11 +13,8 @@ End-to-end workflow testing:
 
 **Tests**: 4 | **Runtime**: ~2 minutes
 
-### 2. URL Shim Tests (`test_url_shims.rb`)
-URL redirection and mapping:
-- ✅ brew-offline-curl URL redirection
-- ✅ URLmap completeness
-- ✅ URL matching (query params, fragments)
+### 2. URL Mapping Tests (Deprecated)
+> **⚠️ DEPRECATED:** `test_url_shims.rb` was removed when shim-based approach was replaced with cache pre-population. URL mapping is now tested as part of the full workflow tests.
 - ✅ Multiple formulae mirroring
 - ✅ Config-only mode validation
 - ✅ Tap commit recording
