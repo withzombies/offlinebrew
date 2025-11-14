@@ -931,7 +931,7 @@ elsif CaskHelpers.cask_api_available? && !cask_taps.empty?
   if cask_files.any?
     total_bytes = cask_files.sum { |f| File.size(f) }
     require_relative "../lib/container_helpers"
-    total_size = ContainerHelpers.human_size(Pathname.new(total_bytes.to_s))
+    total_size = ContainerHelpers.format_bytes(total_bytes)
     puts "  Total cask size: #{total_size}"
   end
 

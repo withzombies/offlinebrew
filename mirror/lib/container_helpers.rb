@@ -112,7 +112,19 @@ module ContainerHelpers
     path = Pathname.new(path) unless path.is_a?(Pathname)
     return "0 B" unless path.exist?
 
-    size = path.size.to_f
+    format_bytes(path.size)
+  end
+
+  # Format bytes as human-readable size
+  #
+  # @param bytes [Integer] Number of bytes
+  # @return [String] Human-readable size (e.g., "150.5 MB")
+  #
+  # @example Format bytes
+  #   ContainerHelpers.format_bytes(143246323)
+  #   # => "136.6 MB"
+  def self.format_bytes(bytes)
+    size = bytes.to_f
     units = %w[B KB MB GB TB]
     unit_index = 0
 
