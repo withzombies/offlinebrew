@@ -129,11 +129,12 @@ else
   exit 1
 fi
 
-# Check packages directory
-if vm_exec "test -d $MIRROR_DIR/packages"; then
-  ok "packages directory found"
+# Check that mirror contains resource files (.tar.gz, .pem, etc.)
+resource_count=$(vm_exec "ls $MIRROR_DIR/*.{tar.gz,pem,bz2} 2>/dev/null | wc -l | tr -d ' '" || echo "0")
+if [[ "$resource_count" -gt 0 ]]; then
+  ok "Mirror contains $resource_count resource files"
 else
-  error "packages directory not found in mirror"
+  error "No resource files found in mirror"
   exit 1
 fi
 
@@ -141,7 +142,7 @@ fi
 info "Gathering mirror statistics..."
 
 mirror_size=$(vm_exec "du -sh $MIRROR_DIR 2>/dev/null | cut -f1" || echo "unknown")
-package_count=$(vm_exec "ls $MIRROR_DIR/packages 2>/dev/null | wc -l | tr -d ' '" || echo "0")
+package_count=$resource_count
 
 ok "Mirror created successfully"
 ok "  Location: $MIRROR_DIR"
