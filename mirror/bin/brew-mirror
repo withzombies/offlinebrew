@@ -1009,6 +1009,26 @@ manifest_file = File.join(options[:directory], "manifest.json")
 File.write manifest_file, JSON.pretty_generate(manifest)
 ohai "Manifest written to: manifest.json"
 
+# Generate API JSON files for formulas
+require_relative "../lib/api_generator"
+api_dir = File.join(options[:directory], "api")
+if options[:iterator] && options[:iterator] != Formula
+  # User specified specific formulas - get them from iterator
+  formula_objects = options[:iterator]
+elsif manifest[:formulae].any?
+  # Get all formulas from manifest
+  formula_objects = manifest[:formulae].map { |f| Formula[f[:name]] rescue nil }.compact
+else
+  formula_objects = []
+end
+
+if formula_objects.any?
+  ApiGenerator.generate_all(formula_objects, api_dir)
+  ohai "Generated API JSON for #{formula_objects.count} formulas"
+else
+  ohai "No formulas to generate API JSON for"
+end
+
 # Generate HTML report
 html_file = File.join(options[:directory], "manifest.html")
 generate_html_report(manifest, html_file)
