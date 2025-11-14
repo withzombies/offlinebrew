@@ -58,7 +58,7 @@ def validate_configuration(config, is_cask_install)
   end
 
   # Verify all mirrored taps are installed locally
-  taps.each do |tap_name, _tap_info|
+  taps.each do |tap_name, tap_info|
     tap_dir = case tap_name
               when "homebrew/homebrew-core"
                 HomebrewPaths.core_tap_path
@@ -68,6 +68,11 @@ def validate_configuration(config, is_cask_install)
                 user, repo = tap_name.split("/")
                 HomebrewPaths.tap_path(user, repo)
               end
+
+    # Skip directory check for bundled taps (Homebrew 5.0+)
+    # Bundled taps don't exist as separate directories, which is expected
+    tap_commit = tap_info["commit"] || tap_info[:commit]
+    next if tap_commit&.start_with?("bundled-")
 
     unless Dir.exist?(tap_dir)
       warn "Warning: Tap #{tap_name} from mirror not found at #{tap_dir}"
