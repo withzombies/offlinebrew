@@ -13,8 +13,7 @@ End-to-end workflow testing:
 
 **Tests**: 4 | **Runtime**: ~2 minutes
 
-### 2. URL Mapping Tests (Deprecated)
-> **⚠️ DEPRECATED:** `test_url_shims.rb` was removed when shim-based approach was replaced with cache pre-population. URL mapping is now tested as part of the full workflow tests.
+### 2. Mirror Verification Tests
 - ✅ Multiple formulae mirroring
 - ✅ Config-only mode validation
 - ✅ Tap commit recording

@@ -1,10 +1,8 @@
-# Task 1.2: Cross-Platform Home Directory Detection
-
-> **📝 NOTE:** This document describes completed work. The solution (using `REAL_HOME` environment variable) is still in use with the cache pre-population approach. Linux support was later removed - offlinebrew is now macOS-only.
+# Task 1.2: Home Directory Detection in Sandboxed Builds
 
 ## Objective
 
-Replace hardcoded `/Users/$USER` paths with cross-platform home directory detection that works on macOS, Linux, and other Unix systems.
+Handle `$HOME` environment variable correctly when Homebrew runs builds in a sandbox environment.
 
 ## Background
 

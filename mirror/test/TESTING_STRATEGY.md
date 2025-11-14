@@ -1,10 +1,8 @@
 # TDD Testing Strategy for Offlinebrew Executables
 
-> **⚠️ PARTIALLY DEPRECATED:** This document describes testing strategies for the old shim-based approach (`brew-offline-curl`, `brew-offline-git`). These shims have been removed in favor of cache pre-population on macOS. The sections about `brew-mirror` and `brew-offline-install` remain relevant. Preserved for historical reference.
-
 ## Current State: Legacy Code Situation
 
-**Reality Check:** The executables (`brew-mirror`, `brew-offline-install`, `brew-offline-curl`) were written before tests. This violates TDD principles.
+**Reality Check:** The executables (`brew-mirror`, `brew-offline-install`) were written before tests. This violates TDD principles.
 
 **What This Means:**
 - We cannot claim these were developed with TDD
@@ -90,56 +88,7 @@ Even `brew mirror` (external command) doesn't work because Homebrew executes the
 
 ## Testing Strategy by Executable
 
-### 1. brew-offline-curl
-
-**What It Does:**
-- Intercepts curl calls from Homebrew
-- Redirects URLs to local mirror using urlmap
-- Handles URL variants (query params, fragments)
-
-**Test Strategy:**
-
-**Unit Tests (with mocks):**
-```ruby
-class TestBrewOfflineCurl < Minitest::Test
-  # RED: Test URL lookup with exact match
-  def test_finds_exact_url_match
-    # Setup mock config and urlmap
-    # Run brew-offline-curl with URL
-    # Assert URL redirected to mirror
-  end
-
-  # RED: Test URL lookup with query parameters
-  def test_finds_url_with_query_params
-    # Original URL: https://example.com/file.dmg?v=1.0
-    # urlmap has: https://example.com/file.dmg
-    # Assert: Finds match and redirects
-  end
-
-  # RED: Test missing URL warning
-  def test_warns_on_missing_url
-    # URL not in urlmap
-    # Assert: Returns original URL + warning
-  end
-
-  # RED: Test HEAD request detection
-  def test_detects_head_requests
-    # curl -I or --head flag
-    # Assert: Detected correctly
-  end
-end
-```
-
-**Integration Tests:**
-```ruby
-def test_curl_invocation_end_to_end
-  # Create test config/urlmap
-  # Invoke brew-offline-curl with test URL
-  # Verify curl called with mirror URL
-end
-```
-
-### 2. brew-offline-install
+### 1. brew-offline-install
 
 **What It Does:**
 - Validates configuration and environment
@@ -307,36 +256,6 @@ ruby mirror/test/executable/test_brew_mirror.rb -n test_skip_existing_flag
 - Extract file existence check to helper if needed
 - Run all tests to ensure nothing broke
 
-### Example: Bug Fix in brew-offline-curl
-
-**Bug:** URLs with fragments (#anchor) not matching in urlmap
-
-**Step 1: RED - Write Failing Test**
-
-```ruby
-def test_matches_url_with_fragment
-  # Setup urlmap: {"https://example.com/file.dmg" => "abc123.dmg"}
-  # Test URL: https://example.com/file.dmg#download
-  # Assert: Finds match (currently fails)
-end
-```
-
-**Step 2: Verify RED**
-```bash
-ruby mirror/test/executable/test_brew_offline_curl.rb -n test_matches_url_with_fragment
-# Expected: AssertionError - no match found
-```
-
-**Step 3: GREEN - Fix**
-
-Already implemented via URLHelpers.normalize_for_matching
-
-**Step 4: Verify GREEN**
-```bash
-ruby mirror/test/executable/test_brew_offline_curl.rb -n test_matches_url_with_fragment
-# Expected: Test passes
-```
-
 ## Test Categories
 
 ### Unit Tests
@@ -425,7 +344,6 @@ end
 - Executables: ✗ 0%
 
 ### Phase 2: Executable Coverage (Target)
-- brew-offline-curl: 80%+ coverage
 - brew-offline-install: 80%+ coverage
 - brew-mirror: 70%+ coverage
 
@@ -444,25 +362,6 @@ cd mirror/test
 ruby test_url_helpers.rb
 ruby test_container_helpers.rb
 ruby test_download_helpers.rb
-
-# Run executable tests
-ruby -I../lib:. executable/test_brew_offline_curl.rb
-```
-
-### Run Specific Test File
-```bash
-ruby -I../lib:. executable/test_brew_offline_curl.rb
-```
-
-### Run Specific Test
-```bash
-ruby -I../lib:. executable/test_brew_offline_curl.rb -n test_url_exact_match_redirects_to_mirror
-```
-
-### Run with Verbose Output
-```bash
-ruby -I../lib:. executable/test_brew_offline_curl.rb -v
-```
 
 ### Run Integration Tests
 
@@ -505,11 +404,6 @@ The `.github/workflows/test.yml` runs three test jobs:
 
 - name: Run download helpers tests
   run: ruby mirror/test/test_download_helpers.rb
-
-- name: Run brew-offline-curl tests
-  run: |
-    cd mirror/test
-    ruby -I../lib:. executable/test_brew_offline_curl.rb
 ```
 
 **2. test-macos-features** (macOS, Ruby 3.0-3.2)
@@ -564,9 +458,8 @@ Can't check all boxes? Return to RED step and start over.
 
 ### Completed ✓
 1. ~~Create test_helper.rb with shared utilities~~ ✓
-2. ~~Write tests for brew-offline-curl~~ ✓ (23 tests, 81 assertions)
-3. ~~Add integration tests~~ ✓ (full workflow end-to-end)
-4. ~~Add to CI/CD~~ ✓ (3 jobs, Ubuntu + macOS)
+2. ~~Add integration tests~~ ✓ (full workflow end-to-end)
+3. ~~Add to CI/CD~~ ✓ (3 jobs, Ubuntu + macOS)
 
 ### In Progress
 - brew-offline-install tests (pending)
