@@ -6,8 +6,8 @@ This guide covers how to install and set up Offlinebrew on your system.
 
 ### For Creating Mirrors
 
-- **Operating System**: macOS 10.15+ (Catalina or later)
-- **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
+- **Operating System**: macOS 12.0 or later
+- **Architecture**: Apple Silicon (arm64)
 - **Disk Space**:
   - Selective mirrors: 1-10GB
   - Full mirrors: 100GB+
@@ -20,8 +20,8 @@ This guide covers how to install and set up Offlinebrew on your system.
 
 ### For Installing from Mirrors
 
-- **Operating System**: macOS 10.15+ (Catalina or later)
-- **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
+- **Operating System**: macOS 12.0 or later
+- **Architecture**: Apple Silicon (arm64)
 - **Disk Space**: Varies by packages installed
 - **Software**:
   - Homebrew (same or older version as used to create mirror)
@@ -343,36 +343,12 @@ rm -rf /path/to/mirror
 find ~ -name "config.json" -path "*/.offlinebrew/*" -o -name "manifest.json" -path "*/brew-mirror/*"
 ```
 
-## Upgrading
-
-### From v1.x to v2.0
-
-See [MIGRATION.md](MIGRATION.md) for detailed upgrade instructions.
-
-**Summary**: v2.0 is backward compatible. Old mirrors work with new tools!
+## Staying Up to Date
 
 ```bash
 # Update offlinebrew
 cd offlinebrew
 git pull origin main
-
-# Optionally update existing mirrors
-brew offline mirror -d ~/old-mirror --update
-```
-
-### Staying Up to Date
-
-```bash
-# Check current version
-cd offlinebrew
-git describe --tags
-
-# Update to latest
-git pull origin main
-
-# Or update to specific version
-git fetch --tags
-git checkout v2.0.0
 ```
 
 ## Next Steps
@@ -393,17 +369,11 @@ After installation:
 
 ## Platform-Specific Notes
 
-### macOS on Apple Silicon (M1/M2/M3/M4)
+### macOS on Apple Silicon
 
-- Homebrew installs to `/opt/homebrew` (not `/usr/local`)
+- Homebrew installs to `/opt/homebrew`
 - Offlinebrew automatically detects this
 - No special configuration needed
-- Uses cache pre-population for offline installation
-
-### macOS on Intel
-
-- Homebrew installs to `/usr/local`
-- Standard configuration works
 - Uses cache pre-population for offline installation
 
 ### How Offline Installation Works on macOS

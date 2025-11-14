@@ -12,7 +12,7 @@ Perfect for secure networks, remote locations, CI/CD pipelines, and reproducible
 - ✅ **Incremental updates** - Skip unchanged packages (10-100x faster!)
 - ✅ **Point-in-time snapshots** - Reproducible builds with commit pinning
 - ✅ **Integrity verification** - Validate mirrors with checksums and completeness checks
-- ✅ **Universal compatibility** - Works on Intel and Apple Silicon Macs
+- ✅ **Apple Silicon native** - Optimized for modern Macs
 - ✅ **Beautiful reports** - HTML and JSON manifests of mirror contents
 - ✅ **Production-ready** - Security hardening, error handling, and comprehensive tests
 
@@ -77,8 +77,6 @@ That's it! 🎉
 - **[Mirror Usage Guide](mirror/README.md)** - Advanced mirror features
 
 ### Reference
-- **[Changelog](CHANGELOG.md)** - Version history and new features
-- **[Migration Guide](MIGRATION.md)** - Upgrading from v1.x to v2.0
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## Common Use Cases
@@ -106,7 +104,7 @@ The result: Homebrew works normally, but all downloads come from your local mirr
 
 ### System Requirements
 - **OS**: macOS 12.0 or later
-- **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
+- **Architecture**: Apple Silicon (arm64)
 - **Ruby**: 3.0+ (included with macOS)
 - **Python**: 3.x (for serving mirrors)
 - **Disk**: 1-100GB depending on mirror size
@@ -182,11 +180,11 @@ Offlinebrew uses a **mirror-based approach** that provides full-featured offline
 
 All functionality is in the `mirror/` directory.
 
-## Recent Updates
+## Key Features
 
-🎉 **Version 2.1+ with automatic dependency resolution!**
+🎉 **Offlinebrew 5.0 for Homebrew 5.0+**
 
-- **Automatic dependencies** ⭐ NEW - Use `--with-deps` to mirror dependencies automatically
+- **Automatic dependencies** ⭐ Use `--with-deps` to mirror dependencies automatically
 - **Full cask support** - Install GUI apps, fonts, drivers
 - **Multi-tap configuration** - Any Homebrew tap, not just core
 - **Incremental updates** - 10-100x faster mirror updates
@@ -195,57 +193,6 @@ All functionality is in the `mirror/` directory.
 - **Apple Silicon native** - Full M1/M2/M3 support
 - **Security hardening** - Protection against injection attacks
 - **Comprehensive tests** - 50+ integration tests
-
-See [CHANGELOG.md](CHANGELOG.md) for complete details.
-
-## Migrating from Previous Versions
-
-### Upgrading to v2.0 (Homebrew 5.0+ Required)
-
-**Breaking Changes**: Version 2.0 requires Homebrew 5.0 or later. The legacy single-tap config format is no longer supported.
-
-If you're using an older version of offlinebrew:
-
-#### 1. Upgrade Homebrew First
-
-```bash
-brew update && brew upgrade
-brew --version  # Should show 5.0.0 or higher
-```
-
-If you're on Homebrew 4.x or earlier, you'll need to upgrade to Homebrew 5.0+.
-
-#### 2. Recreate Your Mirrors
-
-The old single-tap config format is no longer supported. You'll need to recreate mirrors with the new format:
-
-```bash
-# Old format (no longer works):
-# {"commit": "abc123", "formulae": ["wget"]}
-
-# New format (required):
-brew offline mirror --directory /path/to/mirror \
-  --formulae wget,curl \
-  --casks firefox
-```
-
-#### 3. Update Configuration Files
-
-If you have existing config files, update them to use the new multi-tap format:
-
-```json
-{
-  "taps": {
-    "homebrew/homebrew-core": {
-      "commit": "bundled-5.0",
-      "type": "formula"
-    }
-  },
-  "formulae": ["wget", "curl"]
-}
-```
-
-See [MIGRATION.md](MIGRATION.md) for detailed migration instructions.
 
 ## Contributing
 

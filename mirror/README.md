@@ -890,15 +890,6 @@ See [test/integration/README.md](test/integration/README.md) for details.
 
 **Why this approach?** macOS Homebrew doesn't support `HOMEBREW_CURL_PATH` or `HOMEBREW_GIT_PATH` environment variables, so we can't intercept downloads. Pre-populating the cache is more reliable and works consistently across Homebrew versions.
 
-## Migration from v1.x
-
-See [MIGRATION.md](../MIGRATION.md) for upgrading from older versions.
-
-**Summary:** v2.0 is backward compatible!
-- Old mirrors work with new tools
-- Old configs are auto-upgraded
-- Use `--update` to add v2.0 features to old mirrors
-
 ## Performance Tips
 
 1. **Use incremental updates:** `--update` is 10-100x faster
