@@ -136,21 +136,43 @@ ENV["HOMEBREW_NO_GITHUB_API"] = "1"
 # We do this because the mirror currently only contains source packages.
 ENV["HOMEBREW_BUILD_FROM_SOURCE"] = "1"
 
-# HOMEBREW_DEVELOPER tells Homebrew to run in developer mode.
-# We do this so that Homebrew will respect HOMEBREW_CURL_PATH
-# and HOMEBREW_GIT_PATH below.
-ENV["HOMEBREW_DEVELOPER"] = "1"
+# On macOS, Homebrew doesn't support HOMEBREW_CURL for intercepting downloads.
+# Instead, we pre-populate Homebrew's cache directory with files from the mirror.
+# This is the most reliable approach for offline installation.
 
-# HOMEBREW_CURL_PATH and HOMEBREW_GIT_PATH tell Homebrew where to look for
-# `curl` and `git` executables when running in developer mode.
-# In this case, they point to our URL-rewriting shim scripts.
-# Use absolute paths so they work regardless of PATH configuration.
-ENV["HOMEBREW_CURL_PATH"] = File.expand_path("brew-offline-curl", __dir__)
-ENV["HOMEBREW_GIT_PATH"] = File.expand_path("brew-offline-git", __dir__)
+require 'net/http'
+require 'fileutils'
+require 'digest'
 
-warn "DEBUG: HOMEBREW_CURL_PATH = #{ENV['HOMEBREW_CURL_PATH']}"
-warn "DEBUG: HOMEBREW_GIT_PATH = #{ENV['HOMEBREW_GIT_PATH']}"
-warn "DEBUG: Shim exists? #{File.exist?(ENV['HOMEBREW_CURL_PATH'])}"
+def prepopulate_cache_from_mirror(formulae, urlmap, baseurl, cache_dir)
+  downloads_dir = File.join(cache_dir, "downloads")
+  FileUtils.mkdir_p(downloads_dir)
+
+  populated = 0
+  urlmap.each do |url, mirror_file|
+    mirror_url = URI.join(baseurl, mirror_file)
+
+    begin
+      response = Net::HTTP.get_response(URI(mirror_url))
+
+      if response.is_a?(Net::HTTPSuccess)
+        # Homebrew cache files use format: sha256--filename
+        content = response.body
+        sha256 = Digest::SHA256.hexdigest(content)
+        filename = File.basename(URI(url).path)
+        cache_filename = "#{sha256}--#{filename}"
+        cache_path = File.join(downloads_dir, cache_filename)
+
+        File.binwrite(cache_path, content)
+        populated += 1
+      end
+    rescue => e
+      # Silently skip files that fail to download
+    end
+  end
+
+  puts "Pre-populated #{populated} files from mirror into Homebrew cache" if populated > 0
+end
 
 # Detect if user is trying to install a cask
 is_cask_install = ARGV.include?("--cask") || ARGV.include?("cask")
@@ -160,11 +182,6 @@ is_cask_install = true if ARGV.first == "cask"
 # NOTE: These are runtime variables, not constants, so they're evaluated
 # when the script runs (allowing REAL_HOME environment variable to work)
 
-# DEBUG: Print environment info
-warn "DEBUG brew-offline-install: ENV['REAL_HOME'] = #{ENV['REAL_HOME'].inspect}"
-warn "DEBUG brew-offline-install: ENV['HOME'] = #{ENV['HOME'].inspect}"
-warn "DEBUG brew-offline-install: OfflinebrewConfig.real_home_directory = #{OfflinebrewConfig.real_home_directory.inspect}"
-
 brew_offline_dir = OfflinebrewConfig.config_dir
 
 # TODO(ww): We should be fetching most of the configuration options from
@@ -172,9 +189,6 @@ brew_offline_dir = OfflinebrewConfig.config_dir
 # want (and need) locally is the mirror's address.
 brew_offline_local_config = OfflinebrewConfig.config_path
 brew_offline_local_urlmap = OfflinebrewConfig.urlmap_path
-
-warn "DEBUG brew-offline-install: brew_offline_local_config = #{brew_offline_local_config.inspect}"
-warn "DEBUG brew-offline-install: Attempting to read config file..."
 
 config = JSON.parse File.read(brew_offline_local_config), symbolize_names: true
 baseurl = config[:baseurl]
@@ -265,6 +279,10 @@ validate_configuration(config.merge(taps: taps), is_cask_install)
 
 File.write brew_offline_local_config, config.to_json
 File.write brew_offline_local_urlmap, urlmap.to_json
+
+# Pre-populate Homebrew cache from mirror (most reliable method for macOS)
+homebrew_cache = `brew --cache`.chomp
+prepopulate_cache_from_mirror(ARGV, urlmap, baseurl, homebrew_cache)
 
 # Each of these flags would cause us to attempt to retrieve
 # an asset that we don't mirror, so we catch them early on
