@@ -679,6 +679,20 @@ unless skip_formulas
     urlmap[clean_url] = new_location.basename unless clean_url == url_str
   end
 
+  # Download bottles for this formula
+  if formula.bottle
+    require_relative "../lib/bottle_downloader"
+    bottles_dir = File.join(options[:directory], "bottles")
+    bottle_downloader = BottleDownloader.new(bottles_dir, urlmap, options)
+
+    begin
+      bottle_count = bottle_downloader.download_all([formula])
+      ohai "Downloaded #{bottle_count} bottle(s) for #{formula.name}" if bottle_count > 0
+    rescue => e
+      opoo "Failed to download bottles for #{formula.name}: #{e.message}"
+    end
+  end
+
   # Track formula in manifest
   manifest[:formulae] << {
     name: formula.name,
