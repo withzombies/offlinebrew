@@ -126,7 +126,7 @@ module DependencyResolver
 
       cask_tokens.each do |token|
         begin
-          cask = Cask::Cask.load(token)
+          cask = Cask::CaskLoader.load(token)
           resolved_casks.add(token)
 
           # Some casks depend on formulas

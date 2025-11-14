@@ -524,7 +524,13 @@ elsif options[:with_deps] && options[:iterator] == Formula
 end
 
 # Finally, fetch the (stable) resources for each formula from configured taps.
-options[:iterator].each do |formula|
+# Skip formula mirroring if only casks were requested (no -f flag, but --casks flag)
+skip_formulas = options[:iterator] == Formula && options[:casks]
+
+unless skip_formulas
+  formula_iterator = options[:iterator] == Formula ? Formula.all : options[:iterator]
+
+  formula_iterator.each do |formula|
   # Skip formulae that aren't in configured taps
   # Handle different tap types (CoreTap, Tap, etc.)
   formula_tap_name = if formula.tap.respond_to?(:full_name)
@@ -683,7 +689,8 @@ options[:iterator].each do |formula|
   manifest[:statistics][:total_formulae] += 1
 
   sleep options[:sleep]
-end
+  end
+end # unless skip_formulas
 
 # Mirror casks from all configured cask taps
 # Skip cask mirroring if specific formulae were requested but no casks were
