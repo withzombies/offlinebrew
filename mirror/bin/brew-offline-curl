@@ -6,6 +6,8 @@
 # This script intercepts curl calls from Homebrew and redirects URLs to a local mirror.
 # It handles various URL patterns including query parameters and fragments.
 
+STDERR.puts "DEBUG: brew-offline-curl INVOKED with args: #{ARGV.inspect}"
+
 require "uri"
 require "json"
 require_relative "../lib/offlinebrew_config"

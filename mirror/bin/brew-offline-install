@@ -144,8 +144,13 @@ ENV["HOMEBREW_DEVELOPER"] = "1"
 # HOMEBREW_CURL_PATH and HOMEBREW_GIT_PATH tell Homebrew where to look for
 # `curl` and `git` executables when running in developer mode.
 # In this case, they point to our URL-rewriting shim scripts.
-ENV["HOMEBREW_CURL_PATH"] = "brew-offline-curl"
-ENV["HOMEBREW_GIT_PATH"] = "brew-offline-git"
+# Use absolute paths so they work regardless of PATH configuration.
+ENV["HOMEBREW_CURL_PATH"] = File.expand_path("brew-offline-curl", __dir__)
+ENV["HOMEBREW_GIT_PATH"] = File.expand_path("brew-offline-git", __dir__)
+
+warn "DEBUG: HOMEBREW_CURL_PATH = #{ENV['HOMEBREW_CURL_PATH']}"
+warn "DEBUG: HOMEBREW_GIT_PATH = #{ENV['HOMEBREW_GIT_PATH']}"
+warn "DEBUG: Shim exists? #{File.exist?(ENV['HOMEBREW_CURL_PATH'])}"
 
 # Detect if user is trying to install a cask
 is_cask_install = ARGV.include?("--cask") || ARGV.include?("cask")
