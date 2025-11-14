@@ -139,6 +139,24 @@ ENV["HOMEBREW_NO_GITHUB_API"] = "1"
 # We do this because the mirror currently only contains source packages.
 ENV["HOMEBREW_BUILD_FROM_SOURCE"] = "1"
 
+# Force Homebrew to use local tap definitions instead of the JSON API.
+# This is essential for offline cask installation in Homebrew 4.0+/5.0+.
+#
+# Background: Starting with Homebrew 4.0, casks are installed using JSON API
+# files downloaded from formulae.brew.sh instead of using local tap checkouts.
+# This causes offline installation to fail because:
+#   1. Homebrew fetches latest cask definition from API (requires internet)
+#   2. API returns latest SHA256 (different from our mirrored version)
+#   3. Cached file with old SHA256 is not found
+#   4. Installation attempts internet download and fails
+#
+# HOMEBREW_BUILD_FROM_SOURCE only affects formulas, NOT casks. This variable
+# disables the API for both formulas and casks, forcing Homebrew to read
+# definitions from local .rb files in the mirrored tap.
+#
+# See: https://docs.brew.sh/FAQ#can-i-install-my-own-stuff-to-usrlocal
+ENV["HOMEBREW_NO_INSTALL_FROM_API"] = "1"
+
 # Cache Pre-Population for macOS
 #
 # macOS Homebrew doesn't support HOMEBREW_CURL_PATH for intercepting downloads.
