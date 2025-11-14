@@ -202,9 +202,6 @@ module DependencyResolver
         deps += formula.optional_dependencies.map(&:name)
       end
 
-      # Recommended dependencies (always include if present) (Homebrew 5.0+)
-      deps += (formula.recommended_dependencies || []).map(&:name)
-
       deps.uniq
     end
 
