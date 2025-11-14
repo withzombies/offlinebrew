@@ -11,7 +11,7 @@ Offlinebrew creates offline mirrors of Homebrew packages (formulas and casks) so
 ## Requirements
 
 - **macOS 12.0+** on Apple Silicon (arm64)
-- **Homebrew 5.0+** (required)
+- **Homebrew 5.0+** (required) - See [INSTALLING_HOMEBREW_OFFLINE.md](INSTALLING_HOMEBREW_OFFLINE.md) if you need to install Homebrew on an offline machine
 - **Ruby 3.0+** (included with macOS)
 - **Python 3** (for serving mirrors)
 - **Disk space**: 1-100GB depending on mirror size

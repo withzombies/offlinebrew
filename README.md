@@ -72,6 +72,7 @@ That's it! 🎉
 ## Documentation
 
 - **[Getting Started](GETTING_STARTED.md)** ⭐ **Start here!** - Installation, usage, and examples
+- **[Installing Homebrew Offline](INSTALLING_HOMEBREW_OFFLINE.md)** - How to install Homebrew on offline machines
 - **[Advanced Features](mirror/README.md)** - Detailed mirror options and capabilities
 
 ## Common Use Cases
