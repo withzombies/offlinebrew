@@ -192,21 +192,66 @@ rescue StandardError => e
   abort "#{e}: #{e.message} while fetching remote configuration and urlmap!"
 end
 
-# Handle new tap-based config format with backward compatibility
-taps = if config[:taps]
-         # New format
-         config[:taps]
-       elsif config[:commit]
-         # Old format - convert to new format
-         {
-           "homebrew/homebrew-core" => {
-             "commit" => config[:commit],
-             "type" => "formula",
-           },
-         }
-       else
-         abort "Invalid config format: no taps or commit found"
-       end
+# Require new tap-based config format (Homebrew 5.0+ only)
+if config[:commit]
+  abort <<~ERROR
+    ❌ Legacy config format detected!
+
+    Your config uses the old single-tap format:
+    {
+      "commit": "#{config[:commit][0..10]}...",
+      "formulae": [...]
+    }
+
+    This format is no longer supported. Please use the new multi-tap format:
+    {
+      "taps": {
+        "homebrew/homebrew-core": {
+          "commit": "bundled-5.0",
+          "type": "formula"
+        }
+      },
+      "formulae": [...],
+      "casks": [...]
+    }
+
+    For bundled taps in Homebrew 5.0+, use "bundled-5.0" as the commit.
+  ERROR
+end
+
+unless config[:taps]
+  abort <<~ERROR
+    ❌ Invalid config format: 'taps' section is required
+
+    Config must include a 'taps' section:
+    {
+      "taps": {
+        "homebrew/homebrew-core": {
+          "commit": "bundled-5.0",
+          "type": "formula"
+        }
+      },
+      "formulae": ["wget", "curl"]
+    }
+  ERROR
+end
+
+taps = config[:taps]
+
+# Validate each tap configuration
+taps.each do |tap_name, tap_config|
+  unless tap_config.is_a?(Hash)
+    abort "❌ Invalid tap config for #{tap_name}: must be a hash with 'commit' and 'type'"
+  end
+
+  unless tap_config["commit"] || tap_config[:commit]
+    abort "❌ Invalid tap config for #{tap_name}: missing 'commit' field"
+  end
+
+  unless tap_config["type"] || tap_config[:type]
+    abort "❌ Invalid tap config for #{tap_name}: missing 'type' field (formula/cask/mixed)"
+  end
+end
 
 # Validate configuration
 validate_configuration(config.merge(taps: taps), is_cask_install)
