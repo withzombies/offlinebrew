@@ -273,6 +273,10 @@ if config[:taps].empty?
   abort
 end
 
+# Add metadata to config
+config[:stamp] = Time.now.to_i
+config[:baseurl] = options[:baseurl] if options[:baseurl]
+
 File.write File.join(options[:directory], "config.json"), config.to_json
 
 # Initialize urlmap (will be empty in config-only mode)
@@ -389,7 +393,9 @@ def generate_html_report(manifest, output_file)
   HTML
 
   manifest[:taps].each do |tap, info|
-    html += "        <tr><td><code>#{tap}</code></td><td><code>#{info["commit"][0..7]}</code></td><td>#{info["type"]}</td></tr>\n"
+    # Show full commit for bundled taps, truncate git commits to 8 chars
+    commit_display = info["commit"].start_with?("bundled-") ? info["commit"] : info["commit"][0..7]
+    html += "        <tr><td><code>#{tap}</code></td><td><code>#{commit_display}</code></td><td>#{info["type"]}</td></tr>\n"
   end
 
   html += <<~HTML
