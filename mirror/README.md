@@ -843,8 +843,6 @@ When things aren't working:
    brew update
    ```
 
-For more solutions, see [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
-
 ## Testing
 
 Run the comprehensive integration test suite:
@@ -947,8 +945,6 @@ Update client config:
 
 - **Documentation:** [GETTING_STARTED.md](../GETTING_STARTED.md)
 - **Issues:** [GitHub Issues](https://github.com/withzombies/offlinebrew/issues)
-- **Changelog:** [CHANGELOG.md](../CHANGELOG.md)
-- **Migration:** [MIGRATION.md](../MIGRATION.md)
 
 ## License
 
