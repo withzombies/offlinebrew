@@ -192,7 +192,8 @@ class BottleDownloader
 
   # Update the URL map with bottle URL to filename mapping
   def update_urlmap(url, bottle_path)
-    filename = File.basename(bottle_path)
+    # Include bottles/ prefix so web server can find files
+    filename = "bottles/#{File.basename(bottle_path)}"
     @urlmap[url.to_s] = filename
 
     # Also add clean URL variant (without query params) for better matching
