@@ -92,106 +92,62 @@ module TapManager
   # them as separate directories. This method handles both traditional tapped
   # installations and bundled taps.
   #
+  # Check if tap is installed
+  #
   # @param tap_name [String] Tap name in format "user/repo"
-  # @return [Boolean] True if tap is available (either directory exists or bundled)
+  # @return [Boolean] True if tap is available
   #
   # @example Check tap installation
   #   installed = TapManager.tap_installed?("homebrew/homebrew-core")
-  #   # => true (even if not in Taps directory)
+  #   # => true (bundled in Homebrew 5.0+)
   def self.tap_installed?(tap_name)
-    # Check if tap directory exists (traditional taps)
+    # Check if tap directory exists (for non-bundled taps)
     return true if Dir.exist?(tap_directory(tap_name))
 
-    # Check if it's a bundled tap (core/cask in modern Homebrew)
-    # These are bundled with Homebrew itself and don't have separate directories
-    if tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
-      return tap_available_in_homebrew?(tap_name)
-    end
-
-    false
+    # Core and Cask are always available (bundled in Homebrew 5.0+)
+    tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
   end
 
   # Check if a tap is available in Homebrew (for bundled taps)
   #
   # @param tap_name [String] Tap name in format "user/repo"
-  # @return [Boolean] True if tap is available via brew command
+  # @return [Boolean] True if tap is bundled
   #
   # @example Check if core tap is available
   #   available = TapManager.tap_available_in_homebrew?("homebrew/homebrew-core")
   #   # => true
   def self.tap_available_in_homebrew?(tap_name)
-    # For Homebrew 5.0+, core and cask are always bundled and available
-    if tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
-      # Check Homebrew version to confirm 5.0+
-      begin
-        output = SafeShell.execute('brew', '--version', timeout: 5)
-        version_match = output.match(/Homebrew (\d+)\./)
-        return true if version_match && version_match[1].to_i >= 5
-      rescue SafeShell::ExecutionError, SafeShell::TimeoutError
-        # Fall through to tap-info check
-      end
-    end
-
-    # Try to query tap info from Homebrew for other taps
-    # For bundled taps, this will succeed even without a Taps directory
-    begin
-      # Check if we can access the tap through Homebrew
-      # Use --json for reliable parsing
-      output = SafeShell.execute('brew', 'tap-info', '--json', tap_name, timeout: 10)
-      # If the command succeeds and returns data, the tap is available
-      !output.strip.empty?
-    rescue SafeShell::ExecutionError, SafeShell::TimeoutError
-      false
-    end
+    # Core and cask are always bundled in Homebrew 5.0+
+    tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
   end
 
   # Get current commit hash of tap
   #
-  # Handles both traditional tapped installations and bundled taps.
-  # For bundled taps, queries Homebrew for the commit hash.
+  # For Homebrew 5.0+, bundled taps return a synthetic commit based on version
   #
   # @param tap_name [String] Tap name in format "user/repo"
   # @return [String, nil] Commit hash or nil if tap not installed
   #
   # @example Get tap commit
   #   commit = TapManager.tap_commit("homebrew/homebrew-core")
-  #   # => "abc123def456..."
+  #   # => "bundled-5.0.1"
   def self.tap_commit(tap_name)
-    tap_dir = tap_directory(tap_name)
+    # Bundled taps use synthetic commit based on Homebrew version
+    if tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
+      # Use environment variable or default version
+      version = ENV['HOMEBREW_VERSION'] || "5.0"
+      return "bundled-#{version}"
+    end
 
-    # Try traditional tap directory first
+    # For non-bundled taps, check directory
+    tap_dir = tap_directory(tap_name)
     if Dir.exist?(tap_dir)
       Dir.chdir tap_dir do
         begin
           return SafeShell.execute('git', 'rev-parse', 'HEAD', timeout: 10).strip
         rescue SafeShell::ExecutionError, SafeShell::TimeoutError
-          # Fall through to bundled tap check
+          nil
         end
-      end
-    end
-
-    # For bundled taps (core/cask) in Homebrew 5.0+, return a synthetic commit
-    # These are bundled with Homebrew itself and don't have separate commits
-    if tap_name == "homebrew/homebrew-core" || tap_name == "homebrew/homebrew-cask"
-      begin
-        output = SafeShell.execute('brew', '--version', timeout: 5)
-        version_match = output.match(/Homebrew (\d+\.\d+\.\d+)/)
-        if version_match
-          version = version_match[1]
-          major_version = version.split('.')[0].to_i
-          # For Homebrew 5.0+, return a synthetic commit based on version
-          return "bundled-#{version}" if major_version >= 5
-        end
-
-        # Fallback: try tap-info for older versions
-        require 'json'
-        output = SafeShell.execute('brew', 'tap-info', '--json', tap_name, timeout: 10)
-        tap_info = JSON.parse(output)
-        # tap-info returns an array with tap information
-        return tap_info.first&.dig('revision') if tap_info.is_a?(Array) && !tap_info.empty?
-      rescue SafeShell::ExecutionError, SafeShell::TimeoutError, JSON::ParserError
-        # For Homebrew 5.0+, return a fallback synthetic commit
-        "bundled-homebrew-5.x"
       end
     end
 
@@ -265,16 +221,10 @@ module TapManager
   #   taps = TapManager.all_installed_taps
   #   # => ["homebrew/homebrew-core", "homebrew/homebrew-cask", ...]
   def self.all_installed_taps
-    taps = []
+    # Bundled taps are always available
+    taps = ["homebrew/homebrew-core", "homebrew/homebrew-cask"]
 
-    # Add bundled taps if available
-    ["homebrew/homebrew-core", "homebrew/homebrew-cask"].each do |bundled_tap|
-      if tap_available_in_homebrew?(bundled_tap)
-        taps << bundled_tap
-      end
-    end
-
-    # Add traditional tapped installations
+    # Add traditional tapped installations (non-bundled taps)
     taps_dir = HomebrewPaths.taps_path
     if Dir.exist?(taps_dir)
       Dir.glob("#{taps_dir}/*/*").each do |tap_dir|
