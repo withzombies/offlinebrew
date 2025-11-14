@@ -89,25 +89,31 @@ class MirrorVerifier
     puts "[1/4] Verifying configuration..."
     puts ""
 
-    # Check config format
-    if config["taps"]
-      puts "  ✓ Config format: Multi-tap (current)"
-      config["taps"].each do |tap_name, tap_info|
-        commit = tap_info["commit"] || tap_info[:commit]
-        tap_type = tap_info["type"] || tap_info[:type]
-        puts "    - #{tap_name}: #{commit[0..7]} (#{tap_type})"
-      end
-      @stats[:taps] = config["taps"].keys.count
-    elsif config["commit"]
-      @warnings << "Using legacy config format (single tap)"
-      puts "  ⚠ Config format: Legacy (single tap)"
-      puts "    - Commit: #{config["commit"][0..7]}"
-      @stats[:taps] = 1
-    else
-      @errors << "Invalid config: no taps or commit field"
-      puts "  ✗ Invalid config format"
-      return
+    # Check config format - require new format only
+    if config["commit"]
+      abort <<~ERROR
+        ❌ Legacy config format no longer supported!
+
+        This mirror uses the old single-tap format.
+        Please recreate the mirror using:
+
+        brew ruby mirror/bin/brew-mirror --directory /new/path \\
+          --formulae wget,curl \\
+          --casks firefox
+      ERROR
     end
+
+    unless config["taps"]
+      abort "❌ Invalid config format: 'taps' section is required"
+    end
+
+    puts "  ✓ Config format: Multi-tap (Homebrew 5.0+)"
+    config["taps"].each do |tap_name, tap_info|
+      commit = tap_info["commit"] || tap_info[:commit]
+      tap_type = tap_info["type"] || tap_info[:type]
+      puts "    - #{tap_name}: #{commit[0..7]} (#{tap_type})"
+    end
+    @stats[:taps] = config["taps"].keys.count
 
     # Check required fields
     if config["stamp"]
