@@ -71,13 +71,8 @@ That's it! 🎉
 
 ## Documentation
 
-### Getting Started
-- **[Getting Started Guide](GETTING_STARTED.md)** ⭐ **Start here!** - Complete walkthrough with examples
-- **[Installation Guide](INSTALLATION.md)** - Detailed setup instructions
-- **[Mirror Usage Guide](mirror/README.md)** - Advanced mirror features
-
-### Reference
-- **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Getting Started](GETTING_STARTED.md)** ⭐ **Start here!** - Installation, usage, and examples
+- **[Advanced Features](mirror/README.md)** - Detailed mirror options and capabilities
 
 ## Common Use Cases
 

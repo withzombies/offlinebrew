@@ -1,535 +1,317 @@
 # Getting Started with Offlinebrew
 
-This guide walks you through setting up and using Offlinebrew for offline Homebrew package installation.
+Complete guide to installing and using Offlinebrew for offline Homebrew packages.
 
 ## What is Offlinebrew?
 
-Offlinebrew lets you create a complete offline mirror of Homebrew packages (formulas and casks), then install them on machines without internet access. Perfect for air-gapped environments, locations with poor connectivity, or situations where you need reproducible builds.
+Offlinebrew creates offline mirrors of Homebrew packages (formulas and casks) so you can install them on machines without internet access. Perfect for air-gapped environments, remote locations, or reproducible builds.
 
-## Quick Overview
+**The process**: Create mirror (online) → Serve mirror (network) → Install packages (offline)
 
-The process has three main steps:
+## Requirements
 
-1. **Create a mirror** (on a machine with internet) - Download packages and their dependencies
-2. **Serve the mirror** (on a local network) - Make the mirror accessible via HTTP
-3. **Install packages** (on offline machines) - Install from the mirror instead of the internet
-
-## Prerequisites
-
-### Online Machine (for creating mirror)
-- macOS 10.15+ (Catalina or later)
-- 100GB+ free disk space (for full mirror) or 1-10GB (for specific packages)
-- Internet connection
-- Ruby 2.6+ (included with macOS)
-- Python 3 (for serving mirror)
-
-### Offline Machine (for installations)
-- macOS 10.15+ (Catalina or later)
-- Network access to mirror server
-- Ruby 2.6+ (included with macOS)
+- **macOS 12.0+** on Apple Silicon (arm64)
+- **Homebrew 5.0+** (required)
+- **Ruby 3.0+** (included with macOS)
+- **Python 3** (for serving mirrors)
+- **Disk space**: 1-100GB depending on mirror size
 
 ## Installation
 
-### Step 1: Clone Offlinebrew
-
-On your **online machine**, clone this repository:
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/withzombies/offlinebrew.git
 cd offlinebrew
 ```
 
-### Step 2: Add to PATH (Optional but Recommended)
+### 2. Add to PATH
 
-To use the convenient `brew offline` command, add offlinebrew's `bin/` directory to your PATH:
-
+For **zsh** (default on macOS):
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-export PATH="/path/to/offlinebrew/bin:$PATH"
-
-# Or create a symlink (requires sudo)
-sudo ln -s /path/to/offlinebrew/bin/brew-offline /usr/local/bin/brew-offline
+echo 'export PATH="'$(pwd)'/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-After adding to PATH, reload your shell:
+For **bash**:
 ```bash
-source ~/.bashrc  # or source ~/.zshrc
+echo 'export PATH="'$(pwd)'/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
-Now you can use `brew offline` commands!
+### 3. Verify
 
-## Usage
+```bash
+brew offline help
+```
 
-### Part 1: Create a Mirror (Online Machine)
+## Quick Start
 
-#### Option A: Mirror Specific Packages (Recommended for Getting Started)
+### Create a Mirror (Online Machine)
 
-Start with a small mirror of specific packages:
+Mirror specific packages with dependencies:
 
 ```bash
 brew offline mirror \
   -d ~/brew-mirror \
   -f wget,jq,htop \
+  --casks firefox \
   --with-deps \
-  --casks firefox,visual-studio-code \
   -s 1
 ```
 
-This creates a mirror with:
-- 3 command-line tools (wget, jq, htop)
-- **All their dependencies** (automatically resolved with `--with-deps`)
-- 2 GUI applications (Firefox, Visual Studio Code)
+**What this does:**
+- Creates mirror at `~/brew-mirror`
+- Includes wget, jq, htop (command-line tools)
+- Includes Firefox (GUI app)
+- **Automatically includes all dependencies** (`--with-deps`)
 - 1 second delay between downloads (polite to servers)
 
-**Expected**: ~500MB download, takes 5-10 minutes
+**Expected**: ~500MB download, 5-10 minutes
 
-**Why `--with-deps`?** Without this flag, only the specified packages are mirrored. On an offline machine, installations would fail due to missing dependencies. The `--with-deps` flag automatically resolves and includes all required dependencies.
-
-#### Option B: Mirror Everything (for Production Use)
-
-For a complete mirror of all Homebrew packages:
-
-```bash
-brew offline mirror \
-  -d /Volumes/ExternalDrive/brew-mirror \
-  -s 1
-```
-
-**Expected**: ~100GB download, takes several hours
-
-#### Option C: Mirror with Multiple Taps
-
-Include fonts and other specialized packages:
-
-```bash
-brew offline mirror \
-  -d ~/brew-mirror \
-  --taps core,cask,fonts \
-  -f wget,jq \
-  --casks font-fira-code,font-jetbrains-mono \
-  -s 1
-```
-
-#### Understanding Mirror Options
-
-- `-d, --directory` - Where to store the mirror (required)
-- `-f, --formulae` - Specific command-line tools to mirror (comma-separated)
-- `--casks` - Specific GUI apps to mirror (comma-separated)
-- `--with-deps` - ⭐ **Automatically resolve and mirror all dependencies** (highly recommended!)
-- `--include-build` - Include build dependencies (requires `--with-deps`)
-- `--taps` - Which Homebrew taps to include (default: core,cask)
-  - Available shortcuts: `core`, `cask`, `fonts`, `versions`, `drivers`
-- `-s, --sleep` - Seconds to wait between downloads (default: 0.5, recommended: 1)
-- `-c, --config-only` - Create configuration without downloading (for testing)
-- `--update` - Update existing mirror (skip unchanged packages, 10-100x faster!)
-- `--verify` - Verify mirror integrity after creation
-
-### Part 2: Verify the Mirror (Optional but Recommended)
-
-Check that your mirror is complete and valid:
-
-```bash
-brew offline verify ~/brew-mirror
-```
-
-Expected output:
-```
-==> Verifying mirror: /Users/you/brew-mirror
-✓ Configuration file valid
-✓ URL mapping file valid
-✓ All files present
-✓ No orphaned files
-
-Mirror Statistics:
-  Formulae: 3
-  Casks: 2
-  Total Files: 5
-  Total Size: 487.3 MB
-
-Mirror is valid!
-```
-
-For detailed verification:
-```bash
-brew offline verify --verbose ~/brew-mirror
-```
-
-### Part 3: Serve the Mirror
-
-Use Python's built-in HTTP server to make the mirror accessible:
+### Serve the Mirror
 
 ```bash
 cd ~/brew-mirror
 python3 -m http.server 8000
 ```
 
-The mirror is now available at `http://localhost:8000`
+Mirror is now at `http://localhost:8000` (or `http://YOUR_IP:8000` for other machines)
 
-**For other machines on your network:**
-1. Find your IP address: `ifconfig | grep "inet "` (look for 192.168.x.x or 10.x.x.x)
-2. The mirror URL will be: `http://YOUR_IP:8000`
-3. Keep the terminal window open while serving
+### Install from Mirror (Offline Machine)
 
-**For production use**, consider using a proper web server like nginx or Apache.
+**First**, copy offlinebrew to the offline machine (USB/scp/network), then:
 
-### Part 4: Configure Offline Machines
-
-On each **offline machine** that will install from the mirror:
-
-#### Step 1: Copy Offlinebrew to Offline Machine
-
-Transfer the offlinebrew directory to your offline machine:
 ```bash
-# Option 1: USB drive
-cp -r offlinebrew /Volumes/USB/
-# Then copy from USB to offline machine
+# Configure mirror location
+mkdir -p ~/.offlinebrew
+echo '{"baseurl": "http://192.168.1.100:8000"}' > ~/.offlinebrew/config.json
 
-# Option 2: scp (if machines can communicate)
-scp -r offlinebrew user@offline-machine:/path/to/offlinebrew
-
-# Option 3: Git clone (if offline machine has network to your server)
-git clone http://your-server/offlinebrew.git
+# Install packages
+brew offline install wget
+brew offline install --cask firefox
 ```
 
-#### Step 2: Create Configuration
+**Done!** 🎉
 
-On the offline machine, create the configuration file:
+## Creating Mirrors
+
+### Mirror Options
+
+Common options:
+
+- `-d, --directory` - Where to store mirror (required)
+- `-f, --formulae` - Command-line tools (comma-separated)
+- `--casks` - GUI apps (comma-separated)
+- `--with-deps` - **Automatically include dependencies** (recommended!)
+- `-s, --sleep` - Delay between downloads (default: 0.5, recommended: 1)
+- `--verify` - Verify mirror after creation
+- `--update` - Update existing mirror (10-100x faster!)
+
+### Examples
+
+**Specific packages with dependencies:**
+```bash
+brew offline mirror -d ~/mirror -f wget,curl --with-deps -s 1
+```
+
+**GUI apps:**
+```bash
+brew offline mirror -d ~/mirror --casks firefox,chrome,vscode -s 1
+```
+
+**Include fonts:**
+```bash
+brew offline mirror -d ~/mirror \
+  --taps core,cask,fonts \
+  --casks font-fira-code,font-jetbrains-mono \
+  -s 1
+```
+
+**Update existing mirror:**
+```bash
+brew offline mirror -d ~/mirror --update --prune
+```
+
+**Add packages to existing mirror:**
+```bash
+brew offline mirror -d ~/mirror -f tree,ncdu --update
+```
+
+## Verification
+
+Verify mirror integrity:
+
+```bash
+brew offline verify ~/mirror
+```
+
+Expected output:
+```
+✓ Configuration file valid
+✓ URL mapping file valid
+✓ All files present
+
+Mirror Statistics:
+  Formulae: 3
+  Casks: 1
+  Total Files: 8
+  Total Size: 487.3 MB
+
+Mirror is valid!
+```
+
+View manifest:
+```bash
+open ~/mirror/manifest.html
+```
+
+## Serving Mirrors
+
+### Quick (Development)
+
+```bash
+cd ~/mirror
+python3 -m http.server 8000
+```
+
+### Production
+
+Use nginx, Apache, or create a LaunchDaemon for automatic startup.
+
+## Installing Packages
+
+### Configuration
+
+Create `~/.offlinebrew/config.json`:
 
 ```bash
 mkdir -p ~/.offlinebrew
 cat > ~/.offlinebrew/config.json <<EOF
 {
-  "baseurl": "http://192.168.1.100:8000"
+  "baseurl": "http://your-mirror-server:8000"
 }
 EOF
 ```
 
-Replace `192.168.1.100:8000` with your mirror server's IP and port.
-
-#### Step 3: Add to PATH (Optional)
-
-Same as on the online machine:
-```bash
-export PATH="/path/to/offlinebrew/bin:$PATH"
-```
-
-### Part 5: Install Packages from Mirror
-
-Now you can install packages on the offline machine!
-
-#### Install a Command-Line Tool
+### Install Commands
 
 ```bash
+# Formula (command-line tool)
 brew offline install wget
-```
 
-#### Install a GUI Application (Cask)
-
-```bash
+# Cask (GUI app)
 brew offline install --cask firefox
+
+# Multiple packages
+brew offline install jq htop tree
 ```
 
-#### Install Multiple Packages
+## Transferring to Offline Machines
+
+### Via USB
 
 ```bash
-brew offline install jq htop wget
+# On online machine
+cp -r offlinebrew /Volumes/USB/
+
+# On offline machine
+cp -r /Volumes/USB/offlinebrew ~/
+cd ~/offlinebrew
+# Follow installation steps above
 ```
 
-#### What Happens During Installation?
-
-1. The install command reads `~/.offlinebrew/config.json` to find the mirror
-2. It resets Homebrew taps to the versions captured in the mirror
-3. **It pre-populates Homebrew's cache** with all required files from your mirror
-4. Files are named using the format: `sha256hash--filename`
-5. Homebrew installs the package normally, finding files already in cache
-6. After installation, taps are restored to their original state
-
-You'll see a message like: **"Pre-populated 5 files from mirror into Homebrew cache"**
-
-## Updating Your Mirror
-
-As Homebrew packages are updated, you can refresh your mirror:
-
-### Update Incrementally (Fast!)
-
-Only download packages that have changed:
+### Via Network
 
 ```bash
-brew offline mirror -d ~/brew-mirror --update --prune
+scp -r offlinebrew user@offline-machine:/home/user/
 ```
 
-The `--update` flag skips unchanged packages (10-100x faster!), and `--prune` reports which old versions were replaced.
+## Complete Workflow Example
 
-### Add New Packages to Existing Mirror
-
-```bash
-brew offline mirror \
-  -d ~/brew-mirror \
-  -f tree,ncdu \
-  --casks slack \
-  --update
-```
-
-This adds new packages without re-downloading existing ones.
-
-## Complete Example Workflow
-
-Here's a complete example from start to finish:
-
-### On Online Machine
+### Online Machine
 
 ```bash
-# 1. Clone offlinebrew
+# 1. Install offlinebrew
 git clone https://github.com/withzombies/offlinebrew.git
 cd offlinebrew
-
-# 2. Add to PATH
 export PATH="$(pwd)/bin:$PATH"
 
-# 3. Create mirror with specific packages
+# 2. Create mirror
 brew offline mirror \
   -d ~/my-mirror \
-  -f wget,jq,htop,tree \
-  --casks firefox,visual-studio-code \
+  -f wget,jq,htop \
+  --casks firefox \
+  --with-deps \
   -s 1 \
   --verify
 
-# 4. Verify mirror (already done by --verify flag)
-brew offline verify ~/my-mirror
-
-# 5. Check the manifest
-open ~/my-mirror/manifest.html
-# Or: cat ~/my-mirror/manifest.json
-
-# 6. Serve mirror
+# 3. Serve mirror
 cd ~/my-mirror
 python3 -m http.server 8000
 ```
 
-### On Offline Machine
+### Offline Machine
 
 ```bash
-# 1. Copy offlinebrew to offline machine (via USB, scp, etc.)
+# 1. Copy offlinebrew (via USB/scp)
 cd /path/to/offlinebrew
-
-# 2. Add to PATH
 export PATH="$(pwd)/bin:$PATH"
 
-# 3. Configure mirror location
+# 2. Configure mirror
 mkdir -p ~/.offlinebrew
 echo '{"baseurl": "http://192.168.1.100:8000"}' > ~/.offlinebrew/config.json
 
-# 4. Install packages
-brew offline install wget
-brew offline install jq htop
+# 3. Install packages
+brew offline install wget jq htop
 brew offline install --cask firefox
-brew offline install --cask visual-studio-code
 
-# 5. Verify installations
+# 4. Verify
 wget --version
-jq --version
 which firefox
 ```
 
 ## Troubleshooting
 
-### "Command not found: brew"
+**"Command not found: brew"**
+Install Homebrew: https://brew.sh
 
-Homebrew is not installed. Install it first:
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
+**"Command not found: brew offline"**
+Add `bin/` to PATH (see installation step 2) or use full path
 
-### "Mirror verification failed"
-
-Check specific errors with verbose mode:
-```bash
-brew offline verify --verbose ~/brew-mirror
-```
-
-Common issues:
-- Missing files: Re-run mirror command
-- Corrupted downloads: Delete mirror and recreate
-- Network interruption: Use `--update` to resume
-
-### "Cannot find mirror at http://..."
-
+**"Cannot find mirror"**
 1. Check mirror server is running: `curl http://192.168.1.100:8000/config.json`
-2. Check firewall settings on server machine
-3. Verify IP address in `~/.offlinebrew/config.json`
-4. Try from server machine first: `curl http://localhost:8000/config.json`
+2. Verify firewall allows port 8000
+3. Check IP in `~/.offlinebrew/config.json`
 
-### "Package not found in mirror"
-
-The package wasn't included when creating the mirror. Add it:
+**"Package not found in mirror"**
+Add it to mirror with `--update`:
 ```bash
-brew offline mirror -d ~/brew-mirror -f missing-package --update
+brew offline mirror -d ~/mirror -f missing-package --update
 ```
 
-### Installation fails with "checksum mismatch"
+**Mirror verification fails**
+Check with verbose mode:
+```bash
+brew offline verify --verbose ~/mirror
+```
 
-The package version in the mirror doesn't match what Homebrew expects:
-1. Update the mirror: `brew offline mirror -d ~/brew-mirror --update`
-2. Verify the mirror: `brew offline verify ~/brew-mirror`
-3. Try installation again
+## Debug Mode
 
-### "Pre-populated X files" message not appearing
+Enable detailed logging:
+```bash
+export BREW_OFFLINE_DEBUG=1
+brew offline mirror -d ~/mirror -f wget
+```
 
-If you don't see the cache pre-population message during installation:
+## Updating Offlinebrew
 
-1. **Check mirror server is accessible:**
-   ```bash
-   curl http://192.168.1.100:8000/config.json
-   ```
-
-2. **Verify config file:**
-   ```bash
-   cat ~/.offlinebrew/config.json
-   # Should show: {"baseurl": "http://your-mirror:8000"}
-   ```
-
-3. **Check mirror has the package:**
-   ```bash
-   open ~/brew-mirror/manifest.html
-   # Or: cat ~/brew-mirror/manifest.json | jq '.formulae[].name'
-   ```
-
-4. **Enable debug mode to see what's happening:**
-   ```bash
-   export BREW_OFFLINE_DEBUG=1
-   brew offline install wget
-   ```
-
-### Installation still downloads from internet
-
-If installation bypasses the mirror and downloads from the internet:
-
-1. **Verify cache was populated:**
-   ```bash
-   ls ~/Library/Caches/Homebrew/downloads/
-   # Should see files like: abc123...def--wget-1.21.3.tar.gz
-   ```
-
-2. **Check for warning messages:**
-   Look for: "Warning: Failed to fetch X files from mirror"
-   This means mirror server is unreachable
-
-3. **Verify mirror server URL:**
-   ```bash
-   # Test from offline machine
-   curl http://your-mirror-ip:8000/urlmap.json
-   ```
-
-4. **Clear Homebrew cache and try again:**
-   ```bash
-   rm -rf ~/Library/Caches/Homebrew/downloads/*
-   brew offline install wget
-   ```
-
-### For more help
-
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed solutions to common issues.
+```bash
+cd offlinebrew
+git pull origin main
+```
 
 ## Next Steps
 
-- **Production deployment**: Set up nginx/Apache for better performance
-- **Automation**: Schedule mirror updates with cron/launchd
-- **CI/CD**: Use offlinebrew in build pipelines
-- **Multiple mirrors**: Create specialized mirrors for different teams
-
-## Advanced Topics
-
-### Mirror Size Management
-
-Control mirror size by being selective:
-
-```bash
-# Minimal mirror (formulas only, no casks)
-brew offline mirror -d ~/mirror-small --taps core -f wget,jq,curl
-
-# Medium mirror (common packages)
-brew offline mirror -d ~/mirror-medium -f wget,jq,curl,htop,tree --casks firefox
-
-# Large mirror (everything)
-brew offline mirror -d ~/mirror-full
-```
-
-### Point-in-Time Snapshots
-
-Each mirror captures specific versions:
-- Tap commits are recorded in `config.json`
-- All packages are pinned to those versions
-- Reproducible builds across all offline machines
-
-To create a new snapshot:
-```bash
-brew update  # Get latest Homebrew versions
-brew offline mirror -d ~/mirror-$(date +%Y-%m-%d) -f wget,jq
-```
-
-### Multi-Tap Support
-
-Include packages from specialized taps:
-
-```bash
-# Include fonts
-brew offline mirror -d ~/mirror --taps core,cask,fonts --casks font-fira-code
-
-# Include version casks (older versions of apps)
-brew offline mirror -d ~/mirror --taps core,cask,versions
-```
-
-Available tap shortcuts:
-- `core` - Command-line tools (homebrew-core)
-- `cask` - GUI applications (homebrew-cask)
-- `fonts` - Fonts (homebrew-cask-fonts)
-- `versions` - Alternative versions (homebrew-cask-versions)
-- `drivers` - Hardware drivers (homebrew-cask-drivers)
-
-### Custom Taps
-
-Use full tap names for custom taps:
-
-```bash
-brew offline mirror -d ~/mirror --taps homebrew/homebrew-core,mycompany/homebrew-private
-```
-
-## FAQ
-
-**Q: How much disk space do I need?**
-A: Depends on what you mirror:
-- Specific packages: 100MB - 10GB
-- Common developer tools: 10-20GB
-- Everything: ~100GB
-
-**Q: Can I mirror only formulas or only casks?**
-A: Yes! Use `--taps core` for formulas only, or `--taps cask` for casks only.
-
-**Q: How often should I update my mirror?**
-A: Depends on your needs:
-- Security-critical: Weekly
-- Development: Monthly
-- Stable environments: Quarterly
-
-**Q: Can I use this with Homebrew on Linux?**
-A: Partially. Formula support is good, cask support is limited (casks are macOS-only).
-
-**Q: Does this work with bottles (pre-compiled binaries)?**
-A: Yes! Bottles are automatically included when available.
-
-**Q: Can I mirror private/custom taps?**
-A: Yes, use the full tap name with `--taps`.
-
-**Q: What if my mirror is on a different port?**
-A: Just update the `baseurl` in `~/.offlinebrew/config.json` to include the port.
-
-## Summary
-
-Offlinebrew makes offline Homebrew installation straightforward:
-
-1. **Create**: `brew offline mirror -d /path -f wget,jq --casks firefox`
-2. **Serve**: `python3 -m http.server 8000` (in mirror directory)
-3. **Configure**: Set `baseurl` in `~/.offlinebrew/config.json`
-4. **Install**: `brew offline install wget`
-
-For more information, see the [README](README.md) and [mirror documentation](mirror/README.md).
+- **Advanced features**: See [mirror/README.md](mirror/README.md)
+- **Report issues**: https://github.com/withzombies/offlinebrew/issues
