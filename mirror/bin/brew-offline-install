@@ -49,15 +49,13 @@ def validate_configuration(config, is_cask_install)
       ERROR
     end
 
-    # Check if cask tap is installed locally
-    unless HomebrewPaths.cask_tap_exists?
+    # Check if cask API is available (works with both bundled and directory-based taps)
+    require_relative "../lib/cask_helpers"
+    unless CaskHelpers.cask_api_available?
       abort <<~ERROR
-        ERROR: homebrew-cask tap not installed locally.
+        ERROR: Cask API not available in Homebrew.
 
-        Please install it first:
-          brew tap homebrew/cask
-
-        Then try your installation again.
+        Please ensure you have a working Homebrew installation with cask support.
       ERROR
     end
   end
@@ -174,7 +172,8 @@ def prepopulate_cache_from_mirror(formulae, urlmap, baseurl, cache_dir)
         # Homebrew cache files use format: sha256--filename
         content = response.body
         sha256 = Digest::SHA256.hexdigest(content)
-        filename = File.basename(URI(url).path)
+        # URL-decode the filename to match Homebrew's expectations
+        filename = URI.decode_www_form_component(File.basename(URI(url).path))
         cache_filename = "#{sha256}--#{filename}"
         cache_path = File.join(downloads_dir, cache_filename)
 
@@ -303,10 +302,6 @@ validate_configuration(config.merge(taps: taps), is_cask_install)
 File.write brew_offline_local_config, config.to_json
 File.write brew_offline_local_urlmap, urlmap.to_json
 
-# Pre-populate Homebrew cache from mirror (most reliable method for macOS)
-homebrew_cache = `brew --cache`.chomp
-prepopulate_cache_from_mirror(ARGV, urlmap, baseurl, homebrew_cache)
-
 # Each of these flags would cause us to attempt to retrieve
 # an asset that we don't mirror, so we catch them early on
 # and warn the user about them explicitly.
@@ -341,6 +336,11 @@ end
 # Nuke Homebrew's cache. We don't want to assume that our mirroring server
 # supports resumeable downloads or `git fetch`.
 system "brew", "cleanup", "-s", "--prune=0"
+
+# Pre-populate Homebrew cache from mirror (most reliable method for macOS)
+# MUST be done AFTER cleanup to avoid cache deletion
+homebrew_cache = `brew --cache`.chomp
+prepopulate_cache_from_mirror(ARGV, urlmap, baseurl, homebrew_cache)
 
 # Reset all mirrored taps to their respective commits
 # This ensures we install the exact versions we mirrored
