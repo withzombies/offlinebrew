@@ -42,6 +42,24 @@ else
   exit 1
 fi
 
+# Kill any stale tart processes for this VM
+info "Checking for stale processes..."
+# Disable exit-on-error for grep (returns 1 when no matches)
+set +e
+# Use [t]art pattern to avoid matching the grep command itself (better than grep -v grep)
+stale_pids=$(ps aux | grep "[t]art run $VM_NAME" | awk '{print $2}')
+set -e
+
+if [[ -n "$stale_pids" ]]; then
+  warn "Found stale tart processes: $stale_pids"
+  info "Killing stale processes..."
+  echo "$stale_pids" | xargs kill -9 2>/dev/null || true
+  sleep 2
+  ok "Stale processes cleaned up"
+else
+  ok "No stale processes found"
+fi
+
 # Delete existing VM if present
 if tart list 2>/dev/null | grep -q "^$VM_NAME"; then
   warn "Existing VM found: $VM_NAME"

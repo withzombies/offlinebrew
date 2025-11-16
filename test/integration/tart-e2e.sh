@@ -73,8 +73,9 @@ for phase in "${phases[@]}"; do
 
   phase_start=$(date +%s)
 
-  # Run phase script (fail-fast: set -e will exit on error)
-  "$PHASES_DIR/$phase"
+  # Run phase script with explicit bash (doesn't rely on shebang or execute permissions)
+  # Fail-fast: set -e will exit on error
+  bash "$PHASES_DIR/$phase"
 
   phase_end=$(date +%s)
   phase_duration=$((phase_end - phase_start))

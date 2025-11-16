@@ -32,7 +32,11 @@ fi
 info "Configuring Homebrew PATH..."
 
 # Add shellenv to .zprofile for persistence
-vm_exec 'echo '"'"'eval "$(/opt/homebrew/bin/brew shellenv)"'"'"' >> ~/.zprofile' || {
+# Using heredoc for better readability than nested quote escaping
+vm_exec 'cat >> ~/.zprofile <<'"'"'EOF'"'"'
+eval "$(/opt/homebrew/bin/brew shellenv)"
+EOF
+' || {
   error "Failed to add Homebrew to PATH"
   exit 1
 }

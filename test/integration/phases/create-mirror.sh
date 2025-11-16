@@ -153,5 +153,67 @@ ok "  Files: $package_count"
 info "Mirror tap information:"
 vm_exec "cat $MIRROR_DIR/config.json 2>/dev/null | head -20" || warn "Could not read config.json"
 
+# Start HTTP server to serve the mirror
+info "Starting HTTP server to serve mirror..."
+
+# Kill any existing python HTTP server on port 8000
+vm_exec "pkill -f 'python.*SimpleHTTPServer.*8000' 2>/dev/null || pkill -f 'python.*http.server.*8000' 2>/dev/null || true"
+
+# Start HTTP server in background
+# Use a separate script that launches the server and exits immediately
+# We create a startup script in the VM and execute it
+info "Starting HTTP server in VM..."
+
+vm_exec "cat > /tmp/start-http-server.sh <<'SCRIPT_EOF'
+#!/bin/bash
+cd $MIRROR_DIR
+nohup python3 -m http.server 8000 >/tmp/mirror-http-server.log 2>&1 &
+echo \"HTTP server started (PID: \$!)\"
+SCRIPT_EOF
+chmod +x /tmp/start-http-server.sh
+" || {
+  error "Failed to create HTTP server startup script"
+  exit 1
+}
+
+# Execute the script (this will return immediately after backgrounding the server)
+vm_exec "/tmp/start-http-server.sh" || {
+  error "Failed to start HTTP server"
+  exit 1
+}
+
+ok "HTTP server startup script executed"
+info "Note: Server verification will happen during package installation phase"
+
+# Create user config file pointing to the HTTP mirror
+info "Configuring offlinebrew to use HTTP mirror..."
+
+# Create ~/.offlinebrew directory
+vm_exec "mkdir -p /Users/admin/.offlinebrew" || {
+  error "Failed to create offlinebrew config directory"
+  exit 1
+}
+
+# Create config.json with baseurl pointing to HTTP mirror
+vm_exec "cat > /Users/admin/.offlinebrew/config.json <<'EOF'
+{
+  \"baseurl\": \"http://localhost:8000/\"
+}
+EOF
+" || {
+  error "Failed to create offlinebrew config"
+  exit 1
+}
+
+ok "Offlinebrew configured to use mirror at http://localhost:8000/"
+
+# Verify config file
+if vm_exec "test -f /Users/admin/.offlinebrew/config.json"; then
+  ok "User config created: ~/.offlinebrew/config.json"
+else
+  error "Failed to create user config file"
+  exit 1
+fi
+
 info "Mirror creation complete and verified"
 exit 0

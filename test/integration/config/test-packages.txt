@@ -15,5 +15,5 @@ formula,jq,jq --version
 formula,nginx,nginx -v
 
 # Casks (GUI applications)
-cask,firefox,/Applications/Firefox.app/Contents/MacOS/firefox --version
+cask,firefox,defaults read /Applications/Firefox.app/Contents/Info CFBundleShortVersionString
 cask,rectangle,defaults read /Applications/Rectangle.app/Contents/Info CFBundleShortVersionString
