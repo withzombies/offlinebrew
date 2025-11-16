@@ -63,9 +63,6 @@ Tests are added as features are implemented:
   - Native platform for Homebrew
   - Can test code signatures, notarization
   - Real Homebrew installation available
-- **Linux**: No tests (Homebrew is macOS-focused)
-- **Intel Mac**: Not tested (GitHub Actions uses Apple Silicon)
-  - Path detection should work via fallback logic
 
 ## Running Tests Locally
 

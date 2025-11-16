@@ -12,7 +12,7 @@ Perfect for secure networks, remote locations, CI/CD pipelines, and reproducible
 - ✅ **Incremental updates** - Skip unchanged packages (10-100x faster!)
 - ✅ **Point-in-time snapshots** - Reproducible builds with commit pinning
 - ✅ **Integrity verification** - Validate mirrors with checksums and completeness checks
-- ✅ **Universal compatibility** - Works on Intel and Apple Silicon Macs
+- ✅ **Apple Silicon native** - Optimized for modern Macs
 - ✅ **Beautiful reports** - HTML and JSON manifests of mirror contents
 - ✅ **Production-ready** - Security hardening, error handling, and comprehensive tests
 
@@ -71,15 +71,9 @@ That's it! 🎉
 
 ## Documentation
 
-### Getting Started
-- **[Getting Started Guide](GETTING_STARTED.md)** ⭐ **Start here!** - Complete walkthrough with examples
-- **[Installation Guide](INSTALLATION.md)** - Detailed setup instructions
-- **[Mirror Usage Guide](mirror/README.md)** - Advanced mirror features
-
-### Reference
-- **[Changelog](CHANGELOG.md)** - Version history and new features
-- **[Migration Guide](MIGRATION.md)** - Upgrading from v1.x to v2.0
-- **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Getting Started](GETTING_STARTED.md)** ⭐ **Start here!** - Installation, usage, and examples
+- **[Installing Homebrew Offline](INSTALLING_HOMEBREW_OFFLINE.md)** - How to install Homebrew on offline machines
+- **[Advanced Features](mirror/README.md)** - Detailed mirror options and capabilities
 
 ## Common Use Cases
 
@@ -105,14 +99,14 @@ The result: Homebrew works normally, but all downloads come from your local mirr
 ## Requirements
 
 ### System Requirements
-- **OS**: macOS 10.15+ or Linux with Homebrew
-- **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
-- **Ruby**: 2.6+ (included with macOS)
+- **OS**: macOS 12.0 or later
+- **Architecture**: Apple Silicon (arm64)
+- **Ruby**: 3.0+ (included with macOS)
 - **Python**: 3.x (for serving mirrors)
 - **Disk**: 1-100GB depending on mirror size
 
 ### Software Requirements
-- Homebrew (latest version recommended)
+- **Homebrew**: 5.0 or later (**required** - older versions not supported)
 - Git
 - curl (included with macOS)
 
@@ -182,11 +176,11 @@ Offlinebrew uses a **mirror-based approach** that provides full-featured offline
 
 All functionality is in the `mirror/` directory.
 
-## Recent Updates
+## Key Features
 
-🎉 **Version 2.1+ with automatic dependency resolution!**
+🎉 **Offlinebrew 5.0 for Homebrew 5.0+**
 
-- **Automatic dependencies** ⭐ NEW - Use `--with-deps` to mirror dependencies automatically
+- **Automatic dependencies** ⭐ Use `--with-deps` to mirror dependencies automatically
 - **Full cask support** - Install GUI apps, fonts, drivers
 - **Multi-tap configuration** - Any Homebrew tap, not just core
 - **Incremental updates** - 10-100x faster mirror updates
@@ -195,8 +189,6 @@ All functionality is in the `mirror/` directory.
 - **Apple Silicon native** - Full M1/M2/M3 support
 - **Security hardening** - Protection against injection attacks
 - **Comprehensive tests** - 50+ integration tests
-
-See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 ## Contributing
 

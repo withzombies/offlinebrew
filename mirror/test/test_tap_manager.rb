@@ -16,8 +16,10 @@ class TestTapManager < Minitest::Test
   end
 
   def test_parse_tap_name_invalid
+    # Since expand_tap_name now handles single-word names as shorthands,
+    # we need to test with a truly invalid format (multiple slashes)
     assert_raises(SystemExit) do
-      TapManager.parse_tap_name("invalid-tap-name")
+      TapManager.parse_tap_name("invalid/tap/name")
     end
   end
 
@@ -65,7 +67,8 @@ class TestTapManager < Minitest::Test
 
     commit = TapManager.tap_commit("homebrew/homebrew-core")
     refute_nil commit, "Should return commit hash for core tap"
-    assert_match(/^[0-9a-f]{40}$/i, commit, "Commit should be a valid SHA-1 hash")
+    # In Homebrew 5.0+, bundled taps return synthetic commit like "bundled-5.0.1"
+    assert_match(/^bundled-\d+\.\d+/, commit, "Commit should be bundled version format")
   end
 
   def test_tap_commit_nonexistent
@@ -80,5 +83,41 @@ class TestTapManager < Minitest::Test
     assert_instance_of Array, taps
     assert taps.all? { |t| t.include?("/") }, "All taps should be in user/repo format"
     assert taps.include?("homebrew/homebrew-core"), "Core tap should be in list"
+  end
+
+  def test_tap_available_in_homebrew_bundled_taps
+    # Bundled taps are always available in Homebrew 5.0+
+    assert TapManager.tap_available_in_homebrew?("homebrew/homebrew-core"),
+      "Core tap should always be available in 5.0+"
+    assert TapManager.tap_available_in_homebrew?("homebrew/homebrew-cask"),
+      "Cask tap should always be available in 5.0+"
+  end
+
+  def test_tap_available_in_homebrew_non_bundled_taps
+    # Non-bundled taps are not bundled
+    refute TapManager.tap_available_in_homebrew?("custom/custom-tap"),
+      "Custom tap should not be bundled"
+  end
+
+  def test_tap_commit_bundled_format
+    skip "Homebrew not available" unless HomebrewPaths.homebrew_installed?
+
+    # Test both bundled taps return synthetic commit format
+    ["homebrew/homebrew-core", "homebrew/homebrew-cask"].each do |tap|
+      commit = TapManager.tap_commit(tap)
+      assert_match(/^bundled-\d+\.\d+/, commit,
+        "#{tap} should return bundled version format")
+    end
+  end
+
+  def test_all_installed_taps_includes_bundled
+    skip "Homebrew not available" unless HomebrewPaths.homebrew_installed?
+
+    taps = TapManager.all_installed_taps
+    # In Homebrew 5.0+, bundled taps should always be in the list
+    assert taps.include?("homebrew/homebrew-core"),
+      "Core tap should always be in list for 5.0+"
+    assert taps.include?("homebrew/homebrew-cask"),
+      "Cask tap should always be in list for 5.0+"
   end
 end

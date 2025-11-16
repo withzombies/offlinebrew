@@ -273,13 +273,9 @@ if config[:taps].empty?
   abort
 end
 
-# Legacy fields for backward compatibility
-# Use first tap's commit (usually homebrew-core) for old format
-first_tap = config[:taps].values.first
-config[:commit] = first_tap["commit"] if first_tap
-config[:stamp] = Time.now.to_i.to_s
-config[:cache] = options[:directory]
-config[:baseurl] = options[:baseurl]
+# Add metadata to config
+config[:stamp] = Time.now.to_i
+config[:baseurl] = options[:baseurl] if options[:baseurl]
 
 File.write File.join(options[:directory], "config.json"), config.to_json
 
@@ -361,6 +357,7 @@ def generate_html_report(manifest, output_file)
     <!DOCTYPE html>
     <html>
     <head>
+      <meta charset="UTF-8">
       <title>Offlinebrew Mirror Manifest</title>
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; background: #f5f5f5; }
@@ -397,7 +394,9 @@ def generate_html_report(manifest, output_file)
   HTML
 
   manifest[:taps].each do |tap, info|
-    html += "        <tr><td><code>#{tap}</code></td><td><code>#{info["commit"][0..7]}</code></td><td>#{info["type"]}</td></tr>\n"
+    # Show full commit for bundled taps, truncate git commits to 8 chars
+    commit_display = info["commit"].start_with?("bundled-") ? info["commit"] : info["commit"][0..7]
+    html += "        <tr><td><code>#{tap}</code></td><td><code>#{commit_display}</code></td><td>#{info["type"]}</td></tr>\n"
   end
 
   html += <<~HTML
@@ -525,7 +524,13 @@ elsif options[:with_deps] && options[:iterator] == Formula
 end
 
 # Finally, fetch the (stable) resources for each formula from configured taps.
-options[:iterator].each do |formula|
+# Skip formula mirroring if only casks were requested (no -f flag, but --casks flag)
+skip_formulas = options[:iterator] == Formula && options[:casks]
+
+unless skip_formulas
+  formula_iterator = options[:iterator] == Formula ? Formula.all : options[:iterator]
+
+  formula_iterator.each do |formula|
   # Skip formulae that aren't in configured taps
   # Handle different tap types (CoreTap, Tap, etc.)
   formula_tap_name = if formula.tap.respond_to?(:full_name)
@@ -674,6 +679,20 @@ options[:iterator].each do |formula|
     urlmap[clean_url] = new_location.basename unless clean_url == url_str
   end
 
+  # Download bottles for this formula
+  if formula.bottle
+    require_relative "../lib/bottle_downloader"
+    bottles_dir = File.join(options[:directory], "bottles")
+    bottle_downloader = BottleDownloader.new(bottles_dir, urlmap, options)
+
+    begin
+      bottle_count = bottle_downloader.download_all([formula])
+      ohai "Downloaded #{bottle_count} bottle(s) for #{formula.name}" if bottle_count > 0
+    rescue => e
+      opoo "Failed to download bottles for #{formula.name}: #{e.message}"
+    end
+  end
+
   # Track formula in manifest
   manifest[:formulae] << {
     name: formula.name,
@@ -684,7 +703,8 @@ options[:iterator].each do |formula|
   manifest[:statistics][:total_formulae] += 1
 
   sleep options[:sleep]
-end
+  end
+end # unless skip_formulas
 
 # Mirror casks from all configured cask taps
 # Skip cask mirroring if specific formulae were requested but no casks were
@@ -925,7 +945,7 @@ elsif CaskHelpers.cask_api_available? && !cask_taps.empty?
   if cask_files.any?
     total_bytes = cask_files.sum { |f| File.size(f) }
     require_relative "../lib/container_helpers"
-    total_size = ContainerHelpers.human_size(Pathname.new(total_bytes.to_s))
+    total_size = ContainerHelpers.format_bytes(total_bytes)
     puts "  Total cask size: #{total_size}"
   end
 
@@ -1002,6 +1022,26 @@ end
 manifest_file = File.join(options[:directory], "manifest.json")
 File.write manifest_file, JSON.pretty_generate(manifest)
 ohai "Manifest written to: manifest.json"
+
+# Generate API JSON files for formulas
+require_relative "../lib/api_generator"
+api_dir = File.join(options[:directory], "api")
+if options[:iterator] && options[:iterator] != Formula
+  # User specified specific formulas - get them from iterator
+  formula_objects = options[:iterator]
+elsif manifest[:formulae].any?
+  # Get all formulas from manifest
+  formula_objects = manifest[:formulae].map { |f| Formula[f[:name]] rescue nil }.compact
+else
+  formula_objects = []
+end
+
+if formula_objects.any?
+  ApiGenerator.generate_all(formula_objects, api_dir)
+  ohai "Generated API JSON for #{formula_objects.count} formulas"
+else
+  ohai "No formulas to generate API JSON for"
+end
 
 # Generate HTML report
 html_file = File.join(options[:directory], "manifest.html")
